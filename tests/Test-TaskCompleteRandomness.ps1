@@ -4,7 +4,7 @@
 # pick at runtime (without playing audio).
 [CmdletBinding()]
 param(
-    [string] $SoundDirectory = "$env:USERPROFILE\.claude\sounds\task-complete",
+    [string] $SoundDirectory = "$env:USERPROFILE\.claude\sounds\starcraft\task-complete",
     [int]    $Iterations = 100,
     [int]    $BarWidth = 30
 )
@@ -15,9 +15,10 @@ if (-not (Test-Path -LiteralPath $SoundDirectory)) {
     throw "Sound directory not found: $SoundDirectory"
 }
 
-$files = Get-ChildItem -LiteralPath $SoundDirectory -Filter *.mp3 -File
+$files = Get-ChildItem -LiteralPath $SoundDirectory -File |
+    Where-Object { $_.Extension -in '.mp3', '.wav' }
 if (-not $files -or $files.Count -eq 0) {
-    throw "No MP3 files found in $SoundDirectory"
+    throw "No MP3 or WAV files found in $SoundDirectory"
 }
 
 if ($Iterations -lt 1) {
