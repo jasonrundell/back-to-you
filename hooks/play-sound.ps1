@@ -15,8 +15,8 @@ if ($lastMsg -match '\?[^a-zA-Z0-9]*$') {
 
 # Active theme lives in one line of text so switching packs needs no reinstall.
 $themeFile = "$env:USERPROFILE\.claude\sound-theme.txt"
-$theme = if (Test-Path $themeFile) { (Get-Content $themeFile -Raw).Trim() } else { "starcraft" }
-if (-not $theme) { $theme = "starcraft" }
+$theme = if (Test-Path $themeFile) { (Get-Content $themeFile -Raw).Trim() } else { "chiptune" }
+if (-not $theme) { $theme = "chiptune" }
 
 $dir = "$env:USERPROFILE\.claude\sounds\$theme\$category"
 

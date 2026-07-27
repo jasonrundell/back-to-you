@@ -1,68 +1,58 @@
 @echo off
-:: StarCraft / chiptune sound notifications - Claude Code / Cowork installer (Windows)
+:: Chiptune sound notifications - Claude Code / Cowork installer (Windows)
 :: Keep this file ASCII-only with CRLF line endings; cmd mis-parses "::" comments
 :: that contain non-ASCII characters when the file uses LF endings.
 ::
-::   install.bat            installs both packs, activates starcraft
-::   install.bat chiptune   installs both packs, activates chiptune
+::   install.bat            installs every theme, activates chiptune
+::   install.bat mytheme    installs every theme, activates sounds\mytheme
 setlocal
 
 set SCRIPT_DIR=%~dp0
 set CLAUDE_DIR=%USERPROFILE%\.claude
 
 set THEME=%~1
-if "%THEME%"=="" set THEME=starcraft
-if /I "%THEME%"=="starcraft" goto themeok
-if /I "%THEME%"=="chiptune" goto themeok
-echo ERROR: Unknown theme "%THEME%". Use "starcraft" or "chiptune".
-pause
-exit /b 1
-:themeok
+if "%THEME%"=="" set THEME=chiptune
+
+if not exist "%SCRIPT_DIR%sounds\%THEME%\" (
+  echo ERROR: No theme folder at "%SCRIPT_DIR%sounds\%THEME%"
+  echo Available themes:
+  for /d %%T in ("%SCRIPT_DIR%sounds\*") do echo   %%~nxT
+  pause
+  exit /b 1
+)
 
 echo Installing sound notifications for Claude Code / Cowork (Windows)...
 echo   Active theme: %THEME%
 echo.
 
-dir /b "%SCRIPT_DIR%sounds\starcraft\task-complete\*.mp3" >nul 2>nul
+dir /b "%SCRIPT_DIR%sounds\%THEME%\task-complete\*.*" >nul 2>nul
 if errorlevel 1 (
-  echo ERROR: Missing task-complete MP3 files in "%SCRIPT_DIR%sounds\starcraft\task-complete"
+  echo ERROR: No sounds in "%SCRIPT_DIR%sounds\%THEME%\task-complete"
+  echo Regenerate the chiptune theme with:
+  echo   powershell -File tools\New-ChiptuneSounds.ps1 -OutputRoot sounds\chiptune
   pause
   exit /b 1
 )
 
-dir /b "%SCRIPT_DIR%sounds\starcraft\decision-needed\*.mp3" >nul 2>nul
+dir /b "%SCRIPT_DIR%sounds\%THEME%\decision-needed\*.*" >nul 2>nul
 if errorlevel 1 (
-  echo ERROR: Missing decision-needed MP3 files in "%SCRIPT_DIR%sounds\starcraft\decision-needed"
-  pause
-  exit /b 1
-)
-
-dir /b "%SCRIPT_DIR%sounds\chiptune\task-complete\*.wav" >nul 2>nul
-if errorlevel 1 (
-  echo ERROR: Missing chiptune WAV files in "%SCRIPT_DIR%sounds\chiptune\task-complete"
-  echo Regenerate them with: powershell -File tools\New-ChiptuneSounds.ps1 -OutputRoot sounds\chiptune
+  echo ERROR: No sounds in "%SCRIPT_DIR%sounds\%THEME%\decision-needed"
   pause
   exit /b 1
 )
 
 :: Create directories
-if not exist "%CLAUDE_DIR%\sounds\starcraft\task-complete" mkdir "%CLAUDE_DIR%\sounds\starcraft\task-complete"
-if not exist "%CLAUDE_DIR%\sounds\starcraft\decision-needed" mkdir "%CLAUDE_DIR%\sounds\starcraft\decision-needed"
 if not exist "%CLAUDE_DIR%\hooks" mkdir "%CLAUDE_DIR%\hooks"
+if not exist "%CLAUDE_DIR%\sounds" mkdir "%CLAUDE_DIR%\sounds"
 
-:: Install the StarCraft pack
-xcopy /Y "%SCRIPT_DIR%sounds\starcraft\task-complete\*.mp3" "%CLAUDE_DIR%\sounds\starcraft\task-complete\" >nul
-echo   OK StarCraft task-complete sounds copied
-
-xcopy /Y "%SCRIPT_DIR%sounds\starcraft\decision-needed\*.mp3" "%CLAUDE_DIR%\sounds\starcraft\decision-needed\" >nul
-echo   OK StarCraft decision-needed sounds copied
-
-:: Install the chiptune pack
-for %%C in (task-complete decision-needed error subagent-done session-start) do (
-  if not exist "%CLAUDE_DIR%\sounds\chiptune\%%C" mkdir "%CLAUDE_DIR%\sounds\chiptune\%%C"
-  xcopy /Y "%SCRIPT_DIR%sounds\chiptune\%%C\*.wav" "%CLAUDE_DIR%\sounds\chiptune\%%C\" >nul
+:: Install every theme found under sounds\, so custom packs come along too
+xcopy /Y /E /I "%SCRIPT_DIR%sounds" "%CLAUDE_DIR%\sounds" >nul
+if errorlevel 1 (
+  echo ERROR: Copying sounds failed.
+  pause
+  exit /b 1
 )
-echo   OK Chiptune sounds copied
+echo   OK Sound themes copied
 
 :: Record the active theme
 > "%CLAUDE_DIR%\sound-theme.txt" echo %THEME%

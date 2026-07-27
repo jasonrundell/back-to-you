@@ -3,8 +3,8 @@ Add-Type -AssemblyName PresentationCore
 
 # Active theme lives in one line of text so switching packs needs no reinstall.
 $themeFile = "$env:USERPROFILE\.claude\sound-theme.txt"
-$theme = if (Test-Path $themeFile) { (Get-Content $themeFile -Raw).Trim() } else { "starcraft" }
-if (-not $theme) { $theme = "starcraft" }
+$theme = if (Test-Path $themeFile) { (Get-Content $themeFile -Raw).Trim() } else { "chiptune" }
+if (-not $theme) { $theme = "chiptune" }
 
 $dir = "$env:USERPROFILE\.claude\sounds\$theme\decision-needed"
 $files = Get-ChildItem "$dir\*.mp3", "$dir\*.wav" -ErrorAction SilentlyContinue

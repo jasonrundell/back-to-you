@@ -2,21 +2,20 @@
 
 ## Overview
 
-This project installs sound notifications for Claude Code and Cowork on Windows. It copies PowerShell hook scripts and sound assets into `%USERPROFILE%\.claude`, then adds Claude hook entries to `%USERPROFILE%\.claude\settings.json`.
+This project installs chiptune sound notifications for Claude Code and Cowork on Windows. It copies PowerShell hook scripts and sound assets into `%USERPROFILE%\.claude`, then adds Claude hook entries to `%USERPROFILE%\.claude\settings.json`.
 
-Two sound themes ship. `starcraft` is a set of MP3 voice clips. `chiptune` is 16 synthesized 8-bit WAV files produced by `tools/New-ChiptuneSounds.ps1` from a note manifest. The WAVs are committed so they can be previewed and installed without running the generator, but they are build output: edit the manifest and regenerate rather than editing the audio.
+The shipped `chiptune` theme is 16 synthesized 8-bit WAV files produced by `tools/New-ChiptuneSounds.ps1` from a note manifest. The WAVs are committed so they can be previewed and installed without running the generator, but they are build output: edit the manifest and regenerate rather than editing the audio.
 
 ## Feature Capabilities
 
 - Plays randomized sounds for task completion and decision-needed events.
 - Supports Claude Code and Cowork through Claude `Stop` and `Notification` hooks.
 - Detects question-like assistant messages in the `Stop` hook payload and plays a decision-needed sound instead of the task-complete sound.
-- Ships two themes and installs both, with the active one selected by `%USERPROFILE%\.claude\sound-theme.txt`.
-- Synthesizes the chiptune pack from code (square-wave oscillator, decay envelope, pitch sweep) so its sounds are editable as text.
+- Synthesizes its sounds from code (square-wave oscillator, decay envelope, pitch sweep) so they are editable as text.
+- Supports arbitrary user-supplied themes: any folder under `sounds/` is installed, and the active one is named in `%USERPROFILE%\.claude\sound-theme.txt`.
 - Waits for each sound's real duration instead of a fixed delay, so short sounds do not stall the hook.
 - Accepts both `.mp3` and `.wav` in any theme folder.
 - Merges hook entries into existing Claude settings instead of replacing unrelated hooks.
-- Fails installation with a clear error when required MP3 assets are missing.
 
 ## Supported Platforms
 
@@ -30,20 +29,18 @@ Two sound themes ship. `starcraft` is a set of MP3 voice clips. `chiptune` is 16
 .
 ├── README.txt
 ├── PROJECT_INDEX.md
-├── install.bat            # Claude Code / Cowork installer, takes an optional theme
+├── .gitattributes         # pins .bat/.ps1 to CRLF, marks audio binary
+├── install.bat            # installer, takes an optional theme name
 ├── hooks/
 │   ├── play-sound.ps1
 │   └── play-sound-decision.ps1
 ├── sounds/
-│   ├── starcraft/
-│   │   ├── task-complete/     # ~67 MP3 clips
-│   │   └── decision-needed/   # ~40 MP3 clips
-│   └── chiptune/              # 16 generated WAVs, see tools/
-│       ├── task-complete/
-│       ├── decision-needed/
-│       ├── error/
-│       ├── subagent-done/
-│       └── session-start/
+│   └── chiptune/          # 16 generated WAVs, see tools/
+│       ├── task-complete/     # 5
+│       ├── decision-needed/   # 4
+│       ├── error/             # 3
+│       ├── subagent-done/     # 2
+│       └── session-start/     # 2
 ├── tools/
 │   └── New-ChiptuneSounds.ps1 # synthesizes the chiptune theme
 └── tests/
@@ -52,10 +49,10 @@ Two sound themes ship. `starcraft` is a set of MP3 voice clips. `chiptune` is 16
 
 ## Runtime Flow
 
-1. The user runs `install.bat`, optionally passing `starcraft` (default) or `chiptune`.
-2. The installer validates the theme argument, verifies both `sounds/starcraft/` folders contain MP3 files and that the chiptune WAVs are present, and aborts with an error otherwise.
+1. The user runs `install.bat`, optionally passing a theme name (default `chiptune`).
+2. The installer verifies a matching folder exists under `sounds/` and that its `task-complete` and `decision-needed` folders are non-empty, listing the available themes if not.
 3. The installer creates the hook and sound directories under `%USERPROFILE%\.claude`.
-4. The installer copies hook scripts from `hooks/` and both sound themes into the Claude folders.
+4. The installer copies hook scripts from `hooks/` and the entire `sounds/` tree, so every theme present is installed.
 5. The installer writes the chosen theme name to `%USERPROFILE%\.claude\sound-theme.txt`.
 6. The installer creates or updates `%USERPROFILE%\.claude\settings.json` with `Stop` and `Notification` hook commands.
 7. Claude Code or Cowork runs the configured hooks. Each script reads the theme file, then plays a random sound from `sounds\<theme>\<category>\`.
@@ -68,11 +65,8 @@ Two sound themes ship. `starcraft` is a set of MP3 voice clips. `chiptune` is 16
 │   ├── play-sound.ps1
 │   └── play-sound-decision.ps1
 ├── settings.json
-├── sound-theme.txt        # one line: "starcraft" or "chiptune"
+├── sound-theme.txt        # one line naming the active theme
 └── sounds\
-    ├── starcraft\
-    │   ├── task-complete\
-    │   └── decision-needed\
     └── chiptune\
         ├── task-complete\
         ├── decision-needed\
@@ -83,25 +77,24 @@ Two sound themes ship. `starcraft` is a set of MP3 voice clips. `chiptune` is 16
 
 Hooks are installed at the user level, so the sounds apply to every Claude Code and Cowork session for the current Windows user.
 
-Both themes are installed on every run; only the one named in `sound-theme.txt` plays. Switching themes needs no reinstall and no Claude restart, because the hook reads that file on each invocation. Themes live in separate folders so installing one never deletes sounds the user added to another.
+Themes live in separate folders, so installing one never deletes sounds the user added to another. Switching themes needs no reinstall and no Claude restart, because the hook reads `sound-theme.txt` on each invocation. Both hook scripts fall back to `chiptune` when that file is missing or empty.
 
 ## File Responsibilities
 
 ### `README.txt`
 
-User-facing installation, uninstall, and sound documentation.
+User-facing installation, uninstall, theming, and sound-editing documentation.
 
 ### `install.bat`
 
 Windows installer that:
 
-- Validates the optional theme argument (`starcraft` or `chiptune`).
-- Verifies the local MP3 and WAV assets are present.
+- Resolves the theme argument, defaulting to `chiptune`, and validates that the theme folder exists and is populated.
 - Creates Claude hook and sound directories.
-- Copies both sound themes into the Claude sound folders.
+- Copies the whole `sounds/` tree into the Claude sound folder.
 - Writes the active theme to `sound-theme.txt`.
 - Copies PowerShell hook scripts into the Claude hook folder.
-- Creates or updates Claude `settings.json` `Stop` and `Notification` hook entries.
+- Creates or updates Claude `settings.json` `Stop` and `Notification` hook entries, building the JSON with `ConvertTo-Json` so Windows paths are escaped correctly.
 
 ### `hooks/play-sound.ps1`
 
@@ -111,7 +104,7 @@ Claude `Stop` hook script. It reads hook input from standard input, checks wheth
 
 Claude `Notification` hook script. It resolves the active theme and plays a random decision-needed sound.
 
-Both hook scripts fall back to the `starcraft` theme when `sound-theme.txt` is missing or empty, and exit quietly when the resolved folder holds no sounds.
+Both hook scripts exit quietly when the resolved folder holds no sounds, and wait for the sound's real duration rather than a fixed delay.
 
 ### `tools/New-ChiptuneSounds.ps1`
 
@@ -125,7 +118,7 @@ Sound shape carries the meaning: rising phrases that resolve to the tonic read a
 
 ### `tests/Test-TaskCompleteRandomness.ps1`
 
-Sampling harness that mirrors the hook's random selection logic and prints a markdown distribution table. It does not play audio. Defaults to the installed `%USERPROFILE%\.claude\sounds\starcraft\task-complete` folder; override with `-SoundDirectory` to check another theme.
+Sampling harness that mirrors the hook's random selection logic and prints a markdown distribution table. It does not play audio. Defaults to the installed `%USERPROFILE%\.claude\sounds\chiptune\task-complete` folder; override with `-SoundDirectory` to check another theme.
 
 ## Hook Commands
 
@@ -146,12 +139,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%USERPROFILE%\.claude\hooks
 | `subagent-done` | `SubagentStop` |
 | `session-start` | `SessionStart` |
 
-The `starcraft` theme has no folders for these categories. Adding one of these hooks means adding matching clips there too, or the theme will fall silent for that event.
-
 ## Maintenance Notes
 
 - Keep `README.txt` and this index in sync when hook behavior, install steps, themes, or supported platforms change.
 - Claude Code supports many more hook events than `Stop` and `Notification` (for example `StopFailure`, `PostToolUseFailure`, `PermissionRequest`, `SubagentStop`, `SessionStart`). Adding a sound for a new event means adding a hook script under `hooks/`, copying it in `install.bat`, and adding a matching merge block to the `settings.json` PowerShell step.
 - The `Notification` hook supports a matcher on notification type, so decision-needed sounds can be split further if needed.
-- The chiptune manifest in `tools/New-ChiptuneSounds.ps1` is the source of truth for that theme. After editing it, regenerate into `sounds/chiptune/` and commit the resulting WAVs so the checked-in audio never drifts from the manifest.
+- The chiptune manifest is the source of truth for that theme. After editing it, regenerate into `sounds/chiptune/` and commit the resulting WAVs so the checked-in audio never drifts from the manifest.
+- Keep `install.bat` ASCII-only. `cmd` mis-parses `::` comment lines containing non-ASCII characters when the file has LF endings; `.gitattributes` pins `.bat` and `.ps1` to CRLF to prevent that.
 - Validate installer changes on a Windows machine because the project depends on Windows batch syntax, PowerShell, `%USERPROFILE%` paths, and Claude settings.
