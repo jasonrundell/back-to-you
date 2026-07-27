@@ -1,10 +1,10 @@
 # Simulates the task-complete hook's random sound selection N times and prints
 # a markdown distribution chart. Mirrors the exact selection logic used by
-# hooks/play-cursor-stop.ps1's Play-RandomSound function so the result reflects
-# what Cursor would actually pick at runtime (without playing audio).
+# hooks/play-sound.ps1 so the result reflects what Claude Code would actually
+# pick at runtime (without playing audio).
 [CmdletBinding()]
 param(
-    [string] $SoundDirectory = "$env:USERPROFILE\.cursor\sounds\task-complete",
+    [string] $SoundDirectory = "$env:USERPROFILE\.claude\sounds\task-complete",
     [int]    $Iterations = 100,
     [int]    $BarWidth = 30
 )
