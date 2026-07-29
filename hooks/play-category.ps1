@@ -1,24 +1,27 @@
-# Claude Code hook: plays task-complete or decision-needed sound based on last response
-$inputData = [Console]::In.ReadToEnd()
-try {
-    $data = $inputData | ConvertFrom-Json
-    $lastMsg = $data.last_assistant_message
-} catch {
-    $lastMsg = ""
-}
-
-if ($lastMsg -match '\?[^a-zA-Z0-9]*$') {
-    $category = "decision-needed"
-} else {
-    $category = "task-complete"
-}
+# Claude Code hook: plays a random clip from one named sound category.
+#
+# Used by every wired event except Stop, which has to work out its own category
+# from the assistant's last message before it can play anything.
+#
+#   play-category.ps1 -Category decision-needed
+#   play-category.ps1 -Category session-start
+#   play-category.ps1 -Category subagent-done
+#   play-category.ps1 -Category error
+#
+# Exits quietly when the category folder is missing or empty. That is the
+# supported way to switch a sound off: delete the clips you do not want.
+param(
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$Category
+)
 
 # Active theme lives in one line of text so switching packs needs no reinstall.
 $themeFile = "$env:USERPROFILE\.claude\sound-theme.txt"
 $theme = if (Test-Path $themeFile) { (Get-Content $themeFile -Raw).Trim() } else { "claude" }
 if (-not $theme) { $theme = "claude" }
 
-$dir = "$env:USERPROFILE\.claude\sounds\$theme\$category"
+$dir = "$env:USERPROFILE\.claude\sounds\$theme\$Category"
 
 Add-Type -AssemblyName PresentationCore
 $files = Get-ChildItem "$dir\*.mp3", "$dir\*.wav" -ErrorAction SilentlyContinue
@@ -44,7 +47,8 @@ if ($files) {
     $player.Close()
 }
 
-# Always exit 0, explicitly. A non-zero exit surfaces a hook error in the
-# transcript, and without this the process inherits whatever $LASTEXITCODE
-# happened to be.
+# Always exit 0, explicitly. This script is attached to PreToolUse, where an
+# exit code of 2 means "block this tool call" - a hook that failed noisily here
+# would stop Claude from asking the question at all. Without an explicit exit
+# the process inherits whatever $LASTEXITCODE happened to be.
 exit 0

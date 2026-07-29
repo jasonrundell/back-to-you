@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 404" width="1000" height="404" role="img" aria-label="A Claude Code session: a task finishes and the voice says That's finished, then Claude asks a question and the voice says Your call.">
+  <title>Back to You — a task finishes, then a question lands</title>
+  <desc>Stylised terminal animation. A refactor completes and the voice says "That's finished." Claude then asks whether to commit, and the voice says "Your call."</desc>
+
+  <style>
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 17px;
+    }
+    .ink   { fill: #c9d3dd; }
+    .dim   { fill: #6f7c88; }
+    .amber { fill: #e0a85c; }
+
+    /* Every line runs the same 14s cycle; the stagger lives in the keyframe
+       percentages rather than in animation-delay, so the loop stays in phase. */
+    .l { opacity: 0; animation-duration: 14s; animation-iteration-count: infinite; animation-timing-function: ease-out; }
+
+    .l1 { animation-name: k04; }
+    .l2 { animation-name: k12; }
+    .l3 { animation-name: k17; }
+    .l4 { animation-name: k22; }
+    .l5 { animation-name: k28; }
+    .l6 { animation-name: k36; }
+    .l7 { animation-name: k43; }
+    .l8 { animation-name: k57; }
+    .l9 { animation-name: k64; }
+
+    @keyframes k04 { 0%,4%{opacity:0} 6%,95%{opacity:1} 100%{opacity:0} }
+    @keyframes k12 { 0%,12%{opacity:0} 14%,95%{opacity:1} 100%{opacity:0} }
+    @keyframes k17 { 0%,17%{opacity:0} 19%,95%{opacity:1} 100%{opacity:0} }
+    @keyframes k22 { 0%,22%{opacity:0} 24%,95%{opacity:1} 100%{opacity:0} }
+    @keyframes k28 { 0%,28%{opacity:0} 30%,95%{opacity:1} 100%{opacity:0} }
+    @keyframes k36 { 0%,36%{opacity:0} 38%,95%{opacity:1} 100%{opacity:0} }
+    @keyframes k43 { 0%,43%{opacity:0} 45%,95%{opacity:1} 100%{opacity:0} }
+    @keyframes k57 { 0%,57%{opacity:0} 59%,95%{opacity:1} 100%{opacity:0} }
+    @keyframes k64 { 0%,64%{opacity:0} 66%,95%{opacity:1} 100%{opacity:0} }
+
+    /* the sound marks pulse once as they arrive, then settle */
+    .ping { transform-box: fill-box; transform-origin: center; }
+    .p1 { animation: ping1 14s infinite ease-out; }
+    .p2 { animation: ping2 14s infinite ease-out; }
+    @keyframes ping1 { 0%,43%{transform:scale(.4);opacity:0} 46%{transform:scale(1.5);opacity:1} 49%,95%{transform:scale(1);opacity:1} 100%{opacity:0} }
+    @keyframes ping2 { 0%,64%{transform:scale(.4);opacity:0} 67%{transform:scale(1.5);opacity:1} 70%,95%{transform:scale(1);opacity:1} 100%{opacity:0} }
+
+    @media (prefers-reduced-motion: reduce) {
+      .l, .p1, .p2 { animation: none; opacity: 1; }
+      .ping { transform: none; }
+    }
+  </style>
+
+  <!-- window -->
+  <rect x="0.5" y="0.5" width="999" height="403" rx="10" fill="#0d1117" stroke="#262d34"/>
+  <rect x="0.5" y="0.5" width="999" height="44" rx="10" fill="#161b22"/>
+  <rect x="0.5" y="34" width="999" height="11" fill="#161b22"/>
+  <line x1="0" y1="44.5" x2="1000" y2="44.5" stroke="#262d34"/>
+  <circle cx="26" cy="22" r="5.5" fill="#3d444d"/>
+  <circle cx="46" cy="22" r="5.5" fill="#3d444d"/>
+  <circle cx="66" cy="22" r="5.5" fill="#3d444d"/>
+  <text class="mono dim" x="92" y="27" font-size="13">claude</text>
+
+  <!-- the prompt -->
+  <g class="l l1">
+    <text class="mono dim" x="30" y="90">&gt;</text>
+    <text class="mono ink" x="54" y="90">refactor the installer and run the tests</text>
+  </g>
+
+  <!-- work -->
+  <text class="mono dim l l2" x="54" y="130">Read   install.sh</text>
+  <text class="mono dim l l3" x="54" y="158">Edit   install.sh</text>
+  <text class="mono dim l l4" x="54" y="186">Bash   sh tests/test-classification.sh</text>
+  <text class="mono dim l l5" x="115" y="214">13 passed, 0 failed</text>
+
+  <!-- it finishes -->
+  <g class="l l6">
+    <circle cx="34" cy="248" r="5" fill="#6f7c88"/>
+    <text class="mono ink" x="54" y="254">Done. The installer merges cleanly and the tests pass.</text>
+  </g>
+
+  <!-- ...and says so -->
+  <g class="l l7">
+    <circle class="ping p1" cx="34" cy="290" r="5" fill="#e0a85c"/>
+    <text class="mono amber" x="54" y="296">&#9834; &#8220;That&#8217;s finished.&#8221;</text>
+  </g>
+
+  <!-- then it needs you -->
+  <g class="l l8">
+    <circle cx="34" cy="332" r="5" fill="#6f7c88"/>
+    <text class="mono ink" x="54" y="338">Want me to commit it?</text>
+  </g>
+
+  <g class="l l9">
+    <circle class="ping p2" cx="34" cy="374" r="5" fill="#e0a85c"/>
+    <text class="mono amber" x="54" y="380">&#9834; &#8220;Your call.&#8221;</text>
+  </g>
+</svg>

@@ -4,7 +4,7 @@
 # pick at runtime (without playing audio).
 [CmdletBinding()]
 param(
-    [string] $SoundDirectory = "$env:USERPROFILE\.claude\sounds\chiptune\task-complete",
+    [string] $SoundDirectory = "$env:USERPROFILE\.claude\sounds\claude\task-complete",
     [int]    $Iterations = 100,
     [int]    $BarWidth = 30
 )

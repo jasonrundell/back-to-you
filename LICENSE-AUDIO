@@ -1,0 +1,100 @@
+Back to You — audio asset license
+=================================
+
+SCOPE
+
+This license covers every audio file under sounds/ — the 15 voice clips in
+sounds/claude/ and any other audio distributed with this repository.
+
+It does NOT cover the code, scripts, documentation, or artwork, which are MIT.
+See LICENSE.
+
+This audio is NOT open source. It is redistributable, which is not the same
+thing.
+
+
+WHAT YOU MAY DO
+
+  - Use the clips, personally or inside an organization.
+  - Copy and redistribute them, including in a fork of this repository.
+  - Modify, re-cut, re-mix, or re-time them.
+  - Build and share your own sound theme based on them.
+
+All of the above, subject to every condition below.
+
+
+CONDITIONS
+
+  1. NON-COMMERCIAL USE ONLY.
+     You may not use this audio for any commercial purpose. That includes
+     selling it, bundling it with anything sold, using it in a paid product
+     or service, or monetizing distribution of it — for example through
+     sponsorship or affiliate revenue attached to the audio.
+
+  2. PRESERVE ATTRIBUTION.
+     Attribution to ElevenLabs must survive redistribution. If you ship
+     these clips, credit ElevenLabs by including "elevenlabs.io" in the
+     title of your work, as ElevenLabs' terms require.
+
+  3. NO AI OR MACHINE-LEARNING TRAINING.
+     You may not use this audio to train, fine-tune, or evaluate any speech,
+     voice, audio, or other machine-learning model, and you may not include
+     it in any dataset assembled for that purpose.
+
+  4. NO COMPETING USE.
+     You may not use this audio to build or improve any product or service
+     that competes with ElevenLabs.
+
+  5. PASS THESE CONDITIONS ON.
+     If you redistribute the audio, in original or modified form, these
+     same conditions must travel with it. You may not relicense it under
+     more permissive terms — including MIT, CC BY, CC BY-SA, or CC0.
+
+
+WHY THESE CONDITIONS EXIST
+
+They are not preferences. The clips were generated with ElevenLabs, and
+ElevenLabs' Prohibited Use Policy forbids making their output available on
+terms less restrictive than the terms under which it was made available to
+us. Those terms are what you see above.
+
+This is also why the reflexive "MIT for code, Creative Commons for assets"
+split does not work here. CC BY, CC BY-SA, and CC0 all permit commercial
+use, which would breach that clause. Any compliant asset license has to
+carry the restrictions forward, and a license that carries them forward is
+by definition not a free-culture license.
+
+A future maintainer reading this: please do not "simplify" it to MIT or CC.
+Doing so is not a licensing preference, it is a breach. Reversing it would
+require regenerating all 15 clips under an active paid ElevenLabs
+subscription first — upgrading a plan does not retroactively license audio
+that already exists.
+
+
+IF THESE CONDITIONS DO NOT SUIT YOU
+
+Generate your own. ELEVENLABS-VOICE-PROMPT.md is MIT and contains the
+complete recipe: the voice design prompt, the model and settings, and the
+exact line spoken by every clip. Run it under your own ElevenLabs account
+and the audio you get is yours, under whatever terms your own plan grants
+you. Nothing in this file restricts audio you generate yourself.
+
+
+PROVENANCE
+
+  Source              ElevenLabs (elevenlabs.io), Eleven v3
+  Voice               Custom, created with ElevenLabs Voice Design
+  Plan at generation  Free tier
+  Generated           July 2026
+  Recipe              ELEVENLABS-VOICE-PROMPT.md
+
+Copyright (c) 2026 Jason Rundell. Ownership of generated output is retained
+by the creator under ElevenLabs' Terms of Service; these conditions are the
+use restrictions that come with it, not a transfer of ownership.
+
+
+NO WARRANTY
+
+The audio is provided "as is", without warranty of any kind, express or
+implied. The copyright holder is not liable for any claim, damages, or other
+liability arising from its use.
