@@ -1,0 +1,25 @@
+Back to You
+Copyright (c) 2026 Jason Rundell
+
+This product includes third-party material as described below.
+
+-------------------------------------------------------------------------
+
+Roboto (Medium)
+Copyright 2011 Google Inc.
+Licensed under the Apache License, Version 2.0
+http://www.apache.org/licenses/LICENSE-2.0
+
+The wordmark in assets/banner-light.svg and assets/banner-dark.svg is
+drawn as vector outlines derived from Roboto Medium. The letterforms are
+converted to paths so they render identically for every visitor rather
+than falling back to whatever sans-serif the viewer happens to have.
+
+No Roboto font file is redistributed in this repository - only the
+outlines of the eleven characters spelling "Back to You".
+
+-------------------------------------------------------------------------
+
+The audio under sounds/ is not third-party material in the usual sense -
+it was generated for this project - but it carries its own terms. See
+LICENSE-AUDIO.

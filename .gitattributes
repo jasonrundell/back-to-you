@@ -3,5 +3,11 @@
 *.bat text eol=crlf
 *.ps1 text eol=crlf
 
+# The macOS scripts must be LF. A CRLF shebang makes sh fail with
+# "bad interpreter: /bin/sh^M", which is a baffling error to land on.
+*.sh text eol=lf
+*.command text eol=lf
+*.js text eol=lf
+
 *.mp3 binary
 *.wav binary

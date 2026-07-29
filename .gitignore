@@ -1,0 +1,7 @@
+# Temporary git worktrees created by background agents.
+.claude/worktrees/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
