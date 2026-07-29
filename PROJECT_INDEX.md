@@ -34,7 +34,7 @@ The settings merge therefore runs through `osascript -l JavaScript` (JXA), which
 
 ```text
 .
-├── README.txt
+├── README.md
 ├── PROJECT_INDEX.md
 ├── ELEVENLABS-VOICE-PROMPT.md  # persona prompt + per-clip script
 ├── .gitattributes              # .bat/.ps1 -> CRLF, .sh/.command/.js -> LF, audio binary
@@ -104,13 +104,13 @@ Hooks are installed at the user level, so the sounds apply to every Claude Code 
 
 Themes live in separate folders, so installing one never deletes sounds the user added to another. Switching themes needs no reinstall and no Claude restart, because the hook reads `sound-theme.txt` on each invocation. Both hook scripts fall back to `claude` when that file is missing or empty.
 
-Because the installer never deletes installed themes, a `chiptune` folder left over from an earlier version stays on disk until removed by hand. `README.txt` documents this.
+Because the installer never deletes installed themes, a `chiptune` folder left over from an earlier version stays on disk until removed by hand. This is not currently documented in `README.md`.
 
 ## File Responsibilities
 
-### `README.txt`
+### `README.md`
 
-User-facing installation, uninstall, theming, and sound-editing documentation.
+User-facing pitch, installation, uninstall, and theming documentation.
 
 ### `ELEVENLABS-VOICE-PROMPT.md`
 
@@ -215,7 +215,7 @@ Every hook exits quietly when its category folder is missing or empty. **Deletin
 ## Maintenance Notes
 
 - **Change both platforms together.** Every hook-behaviour or install-step change now has a Windows half and a macOS half. Shipping one without the other is the most likely way this project breaks.
-- Keep `README.txt` and this index in sync when hook behavior, install steps, themes, or supported platforms change.
+- Keep `README.md` and this index in sync when hook behavior, install steps, themes, or supported platforms change.
 - Adding a sound for a new hook event is now a **one-line change per platform**: append an entry to the `$plan` array in `tools/merge-settings.ps1` and the `hookPlan()` list in `tools/merge-settings.js`. No new script is needed unless the event has to choose its own category the way `Stop` does. `tests/test-merge-settings.js` covers the macOS side.
 - **`tools/merge-settings.ps1` must end with `exit 0`.** Without an explicit exit the process inherits whatever `$LASTEXITCODE` happened to be, and `install.bat`'s `if errorlevel 1` check aborts a perfectly successful install. This has already bitten once.
 - The `Notification` hook supports a matcher on notification type, so decision-needed clips can be split further. It is currently wired **unmatched**, which means it also fires on `auth_success` and `agent_completed`.
