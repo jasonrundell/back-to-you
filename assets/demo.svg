@@ -79,17 +79,6 @@
   <!-- ...and says so -->
   <g class="l l7">
     <circle class="ping p1" cx="34" cy="290" r="5" fill="#e0a85c"/>
-    <text class="mono amber" x="54" y="296">&#9834; &#8220;That&#8217;s finished.&#8221;</text>
-  </g>
-
-  <!-- then it needs you -->
-  <g class="l l8">
-    <circle cx="34" cy="332" r="5" fill="#6f7c88"/>
-    <text class="mono ink" x="54" y="338">Want me to commit it?</text>
-  </g>
-
-  <g class="l l9">
-    <circle class="ping p2" cx="34" cy="374" r="5" fill="#e0a85c"/>
-    <text class="mono amber" x="54" y="380">&#9834; &#8220;Your call.&#8221;</text>
+    <text class="mono amber" x="54" y="296">&#9834; &#8220;Back to you.&#8221;</text>
   </g>
 </svg>
