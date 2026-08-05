@@ -3,15 +3,46 @@
 :: Keep this file ASCII-only with CRLF line endings; cmd mis-parses "::" comments
 :: that contain non-ASCII characters when the file uses LF endings.
 ::
-::   install.bat            installs every theme, activates claude
+::   install.bat            installs every theme, prompts you to pick one
 ::   install.bat mytheme    installs every theme, activates sounds\mytheme
-setlocal
+setlocal EnableDelayedExpansion
 
 set SCRIPT_DIR=%~dp0
 set CLAUDE_DIR=%USERPROFILE%\.claude
 
 set THEME=%~1
-if "%THEME%"=="" set THEME=claude
+
+if not "%THEME%"=="" goto :theme_chosen
+
+:: No theme argument - list the packs on disk and ask which one to activate.
+set PACK_COUNT=0
+set DEFAULT_PICK=1
+echo Choose a voice pack:
+echo.
+for /d %%T in ("%SCRIPT_DIR%sounds\*") do (
+  set /a PACK_COUNT+=1
+  set "PACK_!PACK_COUNT!=%%~nxT"
+  if "%%~nxT"=="claude" set DEFAULT_PICK=!PACK_COUNT!
+)
+for /l %%N in (1,1,!PACK_COUNT!) do (
+  if "%%N"=="!DEFAULT_PICK!" (
+    echo   %%N^) !PACK_%%N! ^(default^)
+  ) else (
+    echo   %%N^) !PACK_%%N!
+  )
+)
+echo.
+set /p PICK="Pick a number [!DEFAULT_PICK!]: "
+if "%PICK%"=="" set PICK=%DEFAULT_PICK%
+set THEME=!PACK_%PICK%!
+if "%THEME%"=="" (
+  echo ERROR: "%PICK%" isn't one of the choices above.
+  pause
+  exit /b 1
+)
+echo.
+
+:theme_chosen
 
 if not exist "%SCRIPT_DIR%sounds\%THEME%\" (
   echo ERROR: No theme folder at "%SCRIPT_DIR%sounds\%THEME%"

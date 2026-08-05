@@ -26,6 +26,15 @@ CLAUDE_DIR="$HOME/.claude"
 category="${1:-}"
 [ -n "$category" ] || exit 0
 
+# Drain the hook payload even though the category is already known from the
+# argument. Claude Code writes JSON to this process's stdin; leaving it unread
+# risks blocking the writer once a payload outgrows the pipe buffer, and the
+# larger events wired here (PreToolUse, SubagentStop) are the ones that can.
+#
+# Skipped when stdin is a terminal, or running this script by hand would sit
+# there waiting for EOF instead of playing a sound.
+[ -t 0 ] || cat > /dev/null 2>&1
+
 # --- resolve the active theme ----------------------------------------------
 
 theme=claude

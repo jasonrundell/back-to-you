@@ -36,7 +36,7 @@ voices fall apart on one-word lines. Save it as `Claude Code`.
 - Generate **each line as its own generation**, not one block cut up afterwards.
   The pacing stays even that way.
 
-## 3. The 15 clips
+## 3. The 14 clips
 
 Length matters: `hooks/play-sound.ps1` sleeps for the clip's real duration on _every_
 response, so keep `task-complete` and `decision-needed` under ~1.5s. Filenames match
@@ -46,51 +46,44 @@ what is checked into `sounds/claude/`.
 
 Plays at the end of every response, so these need to be short and unremarkable.
 
-| File                    | Text to speak             |
-| ----------------------- | ------------------------- |
-| `vo-done.mp3`           | `[calm] Done.`            |
-| `vo-thats-finished.mp3` | `[calm] That's finished.` |
-| `vo-all-set.mp3`        | `All set.`                |
-| `vo-task-complete.mp3`  | `Task complete.`          |
-| `vo-back-to-you.mp3`    | `[softly] Back to you.`   |
+| File                 | Text to speak           |
+| -------------------- | ----------------------- |
+| `vo-back-to-you.mp3` | `[softly] Back to you.` |
 
 ### `decision-needed/` (4)
 
 Rising, unresolved, slightly forward.
 
-| File               | Text to speak                 |
-| ------------------ | ----------------------------- |
-| `vo-your-call.mp3` | `[curious] Your call.`        |
-| `vo-need-you.mp3`  | `I need you on this one.`     |
-| `vo-question.mp3`  | `[curious] Question for you.` |
-| `vo-waiting.mp3`   | `Waiting on you.`             |
+| File             | Text to speak              |
+| ---------------- | -------------------------- |
+| `vo-waiting.mp3` | `[softly] Waiting on you.` |
 
 ### `error/` (3)
 
 Flat and factual, never alarmed.
 
-| File                  | Text to speak               |
-| --------------------- | --------------------------- |
-| `vo-that-failed.mp3`  | `[flat] That failed.`       |
-| `vo-hit-an-error.mp3` | `[dryly] Hit an error.`     |
-| `vo-didnt-work.mp3`   | `[sighs] That didn't work.` |
+| File                  | Text to speak            |
+| --------------------- | ------------------------ |
+| `vo-hit-an-error.mp3` | `[softly] Hit an error.` |
 
 ### `subagent-done/` (2)
 
 Near-whisper, meant to be barely noticed.
 
-| File                        | Text to speak                |
-| --------------------------- | ---------------------------- |
-| `vo-subagents-done.mp3`     | `Subagent's done.`           |
-| `vo-subagents-all-done.mp3` | `[calm] Subagent's all done.` |
+| File                    | Text to speak               |
+| ----------------------- | --------------------------- |
+| `vo-subagents-done.mp3` | `[softly] Subagent's done.` |
 
-### `session-start/` (1)
+### `session-start/` — retired, no longer generated
 
-The only one that can breathe a little.
+The startup greeting was dropped. `SessionStart` fires on every new session, not
+every app launch, and in a measured six-hour run that came to roughly four times
+an hour — 69% of every sound heard, in bursts as tight as four in 43 seconds.
+The recipe is kept here for anyone who wires the hook themselves:
 
-| File           | Text to speak                |
-| -------------- | ---------------------------- |
-| `vo-ready.mp3` | `[calm] Ready when you are.` |
+| File                        | Text to speak                  |
+| --------------------------- | ------------------------------ |
+| `vo-ready-when-you-are.mp3` | `[softly] Ready when you are.` |
 
 ## 4. After export
 
@@ -108,9 +101,9 @@ install.bat
 ```
 
 The installer only validates `task-complete` and `decision-needed`, so those two must
-be populated. `error`, `subagent-done`, and `session-start` are not wired to any hook
-yet (see the unwired categories table in `PROJECT_INDEX.md`), so those six clips sit
-unused until the matching hook scripts are added.
+be populated. `error` and `subagent-done` are wired and will play as soon as they hold
+a clip; `session-start` is not wired to any hook, so anything left in that folder stays
+silent. See the hook table in `README.md`.
 
 ## 5. Open design question
 
