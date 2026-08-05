@@ -54,12 +54,12 @@ The settings merge therefore runs through `osascript -l JavaScript` (JXA), which
 │   ├── merge-settings.ps1      # Windows settings merge, run by install.bat
 │   └── merge-settings.js       # macOS JXA settings merge, run by install.sh
 ├── sounds/
-│   └── claude/                 # 15 voice-over MP3s
+│   └── claude/                 # 15 voice-over MP3s, 14 of them wired
 │       ├── task-complete/          # 5
 │       ├── decision-needed/        # 4
 │       ├── error/                  # 3
 │       ├── subagent-done/          # 2
-│       └── session-start/          # 1
+│       └── session-start/          # 1, unwired - nothing reads this folder
 └── tests/
     ├── Test-TaskCompleteRandomness.ps1  # Windows clip distribution
     ├── test-clip-selection.sh           # shell clip distribution
@@ -76,7 +76,7 @@ Both installers follow the same sequence. `$CLAUDE` below is `%USERPROFILE%\.cla
 3. The installer creates the hook and sound directories under `$CLAUDE`.
 4. The installer copies hook scripts from `hooks/` and the entire `sounds/` tree, so every theme present is installed. macOS then makes the hook scripts executable.
 5. The installer writes the chosen theme name to `$CLAUDE/sound-theme.txt`.
-6. The installer creates or updates `$CLAUDE/settings.json` with `Stop` and `Notification` hook commands, merging rather than replacing. On macOS the existing file is backed up to `settings.json.bak.<timestamp>` and validated before and after; on failure the backup is restored.
+6. The installer creates or updates `$CLAUDE/settings.json` with the five wired hook commands. It strips every entry pointing at this project's own scripts — current or from an older version — then writes the current plan back, so an upgrade corrects a stale path, a missing timeout, or a matcher an earlier release got wrong. Hooks belonging to the user are untouched. Both platforms back the existing file up to `settings.json.bak.<timestamp>` and validate before and after; on failure the backup is restored.
 7. Claude Code or Cowork runs the configured hooks. Each script reads the theme file, then plays a random clip from `sounds/<theme>/<category>/`.
 
 ## Installed Locations
@@ -89,7 +89,7 @@ Windows installs `.ps1` hooks, macOS installs `.sh` hooks; the rest of the tree 
 │   ├── play-sound.ps1       |  play-sound.sh
 │   └── play-category.ps1        |  play-category.sh
 ├── settings.json
-├── settings.json.bak.<timestamp>   # macOS only, written before each merge
+├── settings.json.bak.<timestamp>   # written before each merge, both platforms
 ├── sound-theme.txt        # one line naming the active theme
 └── sounds\
     └── claude\
@@ -97,7 +97,7 @@ Windows installs `.ps1` hooks, macOS installs `.sh` hooks; the rest of the tree 
         ├── decision-needed\
         ├── error\
         ├── subagent-done\
-        └── session-start\
+        └── session-start\      # installed but unwired; no hook reads it
 ```
 
 Hooks are installed at the user level, so the sounds apply to every Claude Code and Cowork session for the current Windows user.
@@ -162,7 +162,7 @@ Takes a category name and plays a random clip from it. Used by every wired event
 
 ```
 play-category.ps1 -Category decision-needed      # Notification
-play-category.sh  session-start                  # SessionStart
+play-category.sh  subagent-done                  # SubagentStop
 ```
 
 One parameterised script rather than one script per event: four events differ only in which folder they read, and four near-identical files per platform would be eight files to keep in step.
@@ -185,14 +185,13 @@ Sampling harness that mirrors the hook's random selection logic and prints a mar
 
 ## Wired Hook Events
 
-All five sound categories are wired. Every shipped clip plays.
+Four sound categories are wired. `session-start` is not — see below.
 
 | Event | Matcher | Category | Script |
 | --- | --- | --- | --- |
 | `Stop` | none | `task-complete` or `decision-needed` | `play-sound` |
 | `Notification` | `permission_prompt\|agent_needs_input\|elicitation_dialog` | `decision-needed` | `play-category` |
 | `PreToolUse` | `AskUserQuestion` | `decision-needed` | `play-category` |
-| `SessionStart` | `startup` | `session-start` | `play-category` |
 | `SubagentStop` | none | `subagent-done` | `play-category` |
 | `StopFailure` | none | `error` | `play-category` |
 
@@ -204,7 +203,7 @@ Five decisions behind that table, each verified against the hook reference:
   > **This is the one hook that can break Claude Code.** `PreToolUse` can *block* the tool call: exit code 2 means "do not do this". A hook here that exits non-zero stops the question from being asked at all. Both `play-category` scripts exit 0 unconditionally, on every path including every error path, and **must stay that way**. The PowerShell version carries an explicit `exit 0` for exactly this reason — without it the process inherits whatever `$LASTEXITCODE` happened to be.
 
 
-- **`SessionStart` is matched to `startup` alone.** It also fires on `resume`, `clear`, `compact`, and `fork`. Unmatched, the greeting would replay on every `/clear` and after every auto-compaction, which turns a pleasant sound into an irritating one within an hour. Widen the matcher to `startup|resume` if a greeting on `--continue` is wanted.
+- **`SessionStart` is deliberately not wired.** It was, matched to `startup` alone so the greeting would not replay on `resume`, `clear`, `compact`, or `fork`. That was not enough. `startup` means every new **session**, not every app launch, and short-lived sessions are common: instrumenting the hook over a six-hour run caught 25 `SessionStart:startup` events — about four an hour, **69% of every sound heard**, with bursts as tight as four in 43 seconds, and 48% of them from a bare `$HOME` cwd rather than any project. Subagents are *not* the cause; none of the 25 carried an `agent_id`, and a subagent costs only its `SubagentStop` whisper. The greeting was also the least useful clip in the set — a session starting is the one moment the terminal already has your attention, which is precisely what `task-complete` and `decision-needed` exist to cover when it does not. Re-wire it in `tools/merge-settings.*` if you want it back, but note that reinstalling strips any entry pointing at our own scripts.
 - **`StopFailure` does not mean "Claude's work failed".** It fires when a turn ends on an **API error** — rate limit, auth failure, server error. Still the right trigger for the `error` clips, but not what the name suggests. It also cannot block: its output and exit code are ignored, which suits a hook that only makes a noise.
 - **`PostToolUseFailure` is deliberately not wired.** It fires on *every* failed tool call, including a `grep` that matches nothing and a red test run. An error sound there is a constant buzz and is the kind of thing that gets a project uninstalled on day one.
 

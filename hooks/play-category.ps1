@@ -16,6 +16,17 @@ param(
     [string]$Category
 )
 
+# Drain the hook payload even though the category is already known from the
+# argument. Claude Code writes JSON to this process's stdin; leaving it unread
+# risks blocking the writer once a payload outgrows the pipe buffer, and the
+# larger events wired here (PreToolUse, SubagentStop) are the ones that can.
+#
+# Guarded on IsInputRedirected, or running this script by hand would sit there
+# waiting for EOF instead of playing a sound.
+if ([Console]::IsInputRedirected) {
+    try { $null = [Console]::In.ReadToEnd() } catch { }
+}
+
 # Active theme lives in one line of text so switching packs needs no reinstall.
 $themeFile = "$env:USERPROFILE\.claude\sound-theme.txt"
 $theme = if (Test-Path $themeFile) { (Get-Content $themeFile -Raw).Trim() } else { "claude" }

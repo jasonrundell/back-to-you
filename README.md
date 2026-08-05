@@ -29,7 +29,7 @@ Back to You gives [Claude Code](https://code.claude.com/docs) a quiet voice. It 
 
 ## What you hear
 
-Fifteen clips. One is picked at random each time, so it does not get stale.
+Fourteen clips. One is picked at random each time, so it does not get stale.
 
 | When it plays | What you hear |
 | --- | --- |
@@ -37,7 +37,6 @@ Fifteen clips. One is picked at random each time, so it does not get stale.
 | **Claude needs a decision** | _"Your call."_ · _"Question for you."_ · _"Waiting on you."_ · _"I need you on this one."_ |
 | **A turn fails** | _"That failed."_ · _"Hit an error."_ · _"That didn't work."_ |
 | **A subagent finishes** | _"Subagent's done."_ · _"Subagent's all done."_ — near-whispers, meant to be barely noticed |
-| **A session starts** | _"Ready when you are."_ |
 
 The first row plays at the end of **every** response. That is the point, and it is also the thing to know before installing: the clips are kept under a second and a half for exactly this reason.
 
@@ -113,6 +112,8 @@ Also works with **Cowork**, which reads the same hooks.
 ~/.claude/sound-theme.txt
 ```
 
+Installed before v1? Older builds also left `~/.claude/hooks/play-sound-decision.sh` (or `.ps1`) behind. Running the current installer unwires it for you; the file itself is inert once unwired, and safe to delete.
+
 <details>
 <summary><h2 style="display:inline">How it works</h2></summary>
 
@@ -127,11 +128,13 @@ Notification ──→ 🔊 "Your call."
 | --- | --- | --- |
 | `Stop` | A response ends | `task-complete`, or `decision-needed` if the response ends in a question |
 | `Notification` | Claude asks for permission or input | `decision-needed` |
-| `SessionStart` | A new session starts | `session-start` |
+| `PreToolUse` | Claude opens the multiple-choice picker | `decision-needed` |
 | `SubagentStop` | A subagent finishes | `subagent-done` |
 | `StopFailure` | A turn ends on an API error | `error` |
 
-`SessionStart` is matched to `startup` only, so the greeting doesn't replay every time you `/clear`. `PostToolUseFailure` is deliberately left alone — it fires on every failed tool call, including a `grep` that finds nothing, and would buzz constantly.
+`Notification` is matched to the types that are genuinely a request for input, and `PreToolUse` to `AskUserQuestion` — the picker has no notification type of its own, and would otherwise be the one decision-shaped moment that stays silent. `PostToolUseFailure` is deliberately left alone: it fires on every failed tool call, including a `grep` that finds nothing, and would buzz constantly.
+
+**`SessionStart` is deliberately not wired**, and there is no startup greeting. Earlier versions wired it, matched to `startup` so it wouldn't replay on `/clear` or after a compaction. That wasn't enough: `startup` means every new *session*, not every app launch, and short-lived sessions are common. Measured over a six-hour run it fired about four times an hour and accounted for **69% of every sound heard**, in bursts as tight as four in 43 seconds. It was also the least useful of the set — a session starting is the one moment you're already looking at the terminal, which is exactly what `task-complete` and `decision-needed` are for. Reinstalling removes the hook from an existing install.
 
 The installer merges these into `~/.claude/settings.json` without touching anything else in it, backing the file up first:
 
@@ -159,8 +162,7 @@ sounds/mytheme/
 ├── task-complete/
 ├── decision-needed/
 ├── error/
-├── subagent-done/
-└── session-start/
+└── subagent-done/
 ```
 
 ```bash
