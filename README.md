@@ -40,6 +40,19 @@ Fourteen clips. One is picked at random each time, so it does not get stale.
 
 The first row plays at the end of **every** response. That is the point, and it is also the thing to know before installing: the clips are kept under a second and a half for exactly this reason.
 
+## Voice packs
+
+Four packs ship today. The installer asks which to activate; switching later is a one-line edit to `sound-theme.txt`, no reinstall needed.
+
+| Pack | Vibe |
+| --- | --- |
+| `claude` _(default)_ | Calm, dry, competent-engineer-beside-you. Understated humor, never enthusiastic. |
+| `gigatron` | A genius AI quietly amused by humans — deep, wry, faintly metallic, calm menace under the humor. |
+| `jay-run` | A second neutral voice, no character write-up yet — give it a listen. |
+| `mistress-of-pain` | Low, smoky, predatory calm — an amused, coldly curious hunter, not a seductress. |
+
+Want your own? See "Make your own theme" below.
+
 ## Install
 
 ### macOS
