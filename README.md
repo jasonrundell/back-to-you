@@ -29,16 +29,31 @@ Back to You gives [Claude Code](https://code.claude.com/docs) a quiet voice. It 
 
 ## What you hear
 
-Fourteen clips. One is picked at random each time, so it does not get stale.
+Each pack ships one clip per hook today.
 
 | When it plays | What you hear |
 | --- | --- |
-| **A task finishes** | _"Done."_ · _"That's finished."_ · _"All set."_ · _"Task complete."_ · _"Back to you."_ |
-| **Claude needs a decision** | _"Your call."_ · _"Question for you."_ · _"Waiting on you."_ · _"I need you on this one."_ |
-| **A turn fails** | _"That failed."_ · _"Hit an error."_ · _"That didn't work."_ |
-| **A subagent finishes** | _"Subagent's done."_ · _"Subagent's all done."_ — near-whispers, meant to be barely noticed |
+| **A task finishes** | _"Back to you."_ |
+| **Claude needs a decision** | _"Waiting on you."_ |
+| **A turn fails** | _"Hit an error."_ |
+| **A subagent finishes** | _"Subagent's done."_ — a near-whisper, meant to be barely noticed |
 
 The first row plays at the end of **every** response. That is the point, and it is also the thing to know before installing: the clips are kept under a second and a half for exactly this reason.
+
+Want more variety? Drop extra `.mp3` or `.wav` files into any `sounds/<pack>/<category>/` folder — the hook picks one at random each time it fires, so add as many takes as you like.
+
+## Voice packs
+
+Four packs ship today. The installer asks which to activate; switching later is a one-line edit to `sound-theme.txt`, no reinstall needed.
+
+| Pack | Vibe |
+| --- | --- |
+| `claude` _(default)_ | Calm, dry, competent-engineer-beside-you. Understated humor, never enthusiastic. |
+| `gigatron` | A genius AI quietly amused by humans — deep, wry, faintly metallic, calm menace under the humor. |
+| `jay-run` | A second neutral voice, no character write-up yet — give it a listen. |
+| `mistress-of-pain` | Low, smoky, predatory calm — an amused, coldly curious hunter, not a seductress. |
+
+Want your own? See "Make your own theme" below.
 
 ## Install
 
@@ -190,7 +205,7 @@ Two licenses, and the difference matters:
 
 That split isn't a preference. The clips were generated with ElevenLabs, whose terms forbid offering their output under anything more permissive — which rules out MIT and every Creative Commons license alike.
 
-**If those terms don't suit you, generate your own.** [ELEVENLABS-VOICE-PROMPT.md](ELEVENLABS-VOICE-PROMPT.md) is MIT and holds the complete recipe: the voice design prompt, the model settings, and the exact line for all fifteen clips. Run it under your own ElevenLabs account and the audio is yours outright.
+**If those terms don't suit you, generate your own.** [ELEVENLABS-VOICE-PROMPT.md](ELEVENLABS-VOICE-PROMPT.md) is MIT and holds the complete recipe: the voice design prompt, the model settings, and the exact line for each of the four clips. Run it under your own ElevenLabs account and the audio is yours outright.
 
 ## About the sounds
 
