@@ -125,7 +125,7 @@ printf '  ok  Hook scripts installed\n'
 BACKUP=""
 
 if [ -f "$SETTINGS" ]; then
-    if ! LINT_OUTPUT=$(plutil -lint "$SETTINGS" 2>&1); then
+    if ! LINT_OUTPUT=$(osascript -l JavaScript "$SCRIPT_DIR/tools/lint-json.js" "$SETTINGS" 2>&1); then
         printf 'ERROR: %s exists but is not valid JSON:\n' "$SETTINGS" >&2
         printf '  %s\n' "$LINT_OUTPUT" >&2
         printf 'Fix or move it, then run this installer again.\n' >&2
@@ -149,7 +149,7 @@ if ! osascript -l JavaScript "$SCRIPT_DIR/tools/merge-settings.js" "$SETTINGS" "
     restore_and_fail "Could not update settings.json."
 fi
 
-if ! LINT_OUTPUT=$(plutil -lint "$SETTINGS" 2>&1); then
+if ! LINT_OUTPUT=$(osascript -l JavaScript "$SCRIPT_DIR/tools/lint-json.js" "$SETTINGS" 2>&1); then
     restore_and_fail "settings.json is not valid JSON after the merge: $LINT_OUTPUT"
 fi
 
