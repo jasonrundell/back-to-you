@@ -52,7 +52,8 @@ The settings merge therefore runs through `osascript -l JavaScript` (JXA), which
 │   └── play-category.sh            # macOS, all fixed-category events
 ├── tools/
 │   ├── merge-settings.ps1      # Windows settings merge, run by install.bat
-│   └── merge-settings.js       # macOS JXA settings merge, run by install.sh
+│   ├── merge-settings.js       # macOS JXA settings merge, run by install.sh
+│   └── lint-json.js            # macOS JXA settings.json validation, run by install.sh
 ├── sounds/
 │   └── claude/                 # 15 voice-over MP3s, 14 of them wired
 │       ├── task-complete/          # 5
@@ -65,7 +66,8 @@ The settings merge therefore runs through `osascript -l JavaScript` (JXA), which
     ├── test-clip-selection.sh           # shell clip distribution
     ├── test-classification.sh           # Stop hook question detection
     ├── test-subagent-suppression.sh     # Stop hook redundant-clip suppression
-    └── test-merge-settings.js           # macOS settings merge (needs node)
+    ├── test-merge-settings.js           # macOS settings merge (needs node)
+    └── test-lint-json.js                # macOS settings.json validation (needs node)
 ```
 
 ## Runtime Flow
@@ -132,7 +134,7 @@ Windows installer that:
 
 macOS installer. Mirrors `install.bat` step for step, with two differences that matter:
 
-- **It backs up `settings.json` before touching it**, validates with `plutil -lint` before and after the merge, and restores the backup if either check fails. It also treats "absent" and "unparseable" as distinct cases, refusing to overwrite a malformed file rather than replacing it.
+- **It backs up `settings.json` before touching it**, validates with `tools/lint-json.js` (JXA `JSON.parse`) before and after the merge, and restores the backup if either check fails. It also treats "absent" and "unparseable" as distinct cases, refusing to overwrite a malformed file rather than replacing it. An earlier version validated with `plutil -lint`, which rejected at least one real, well-formed `settings.json` — plutil round-trips JSON through the plist type system to validate it, and that round-trip can fail JSON that `JSON.parse` accepts outright.
 - **It `chmod +x` the installed hook scripts.** Without that the hooks are a silent no-op — nothing errors, there is simply never any sound.
 
 ### `install.command`
@@ -150,6 +152,10 @@ It lives in its own file rather than inside `install.bat` because five entries, 
 The macOS settings merge, run by `install.sh` via `osascript -l JavaScript`. Scans `hooks.Stop` and `hooks.Notification` for an entry already naming our scripts, appends one if absent, and writes atomically.
 
 JXA rather than `plutil` because this is the user's own config file: `plutil` round-trips JSON through the plist type system, which has no `null`, sorts keys, and can coerce types. `JSON.parse`/`JSON.stringify` is an identity transform for everything it does not deliberately touch.
+
+### `tools/lint-json.js`
+
+Validates `settings.json` before and after the merge, run by `install.sh` via `osascript -l JavaScript`. Empty or absent content is treated as valid; anything else must parse as a JSON object. Used in place of `plutil -lint`, which validates by round-tripping through the plist type system and can reject well-formed JSON that round-trip does not like — linting with the same `JSON.parse` the merge itself uses means a pass here is a guarantee the merge will parse the file too.
 
 ### `hooks/play-sound.ps1` and `hooks/play-sound.sh`
 

@@ -81,7 +81,8 @@ if (Test-Path $SettingsPath) {
         try {
             $config = $raw | ConvertFrom-Json
         } catch {
-            Write-Host "ERROR: $SettingsPath exists but is not valid JSON." -ForegroundColor Red
+            Write-Host "ERROR: $SettingsPath exists but is not valid JSON:" -ForegroundColor Red
+            Write-Host "  $($_.Exception.Message)"
             Write-Host "Fix or move it, then run this installer again. Nothing has been changed."
             exit 1
         }
@@ -187,7 +188,8 @@ try {
     # installer at all, so prove it before walking away.
     $null = Get-Content $SettingsPath -Raw | ConvertFrom-Json
 } catch {
-    Write-Host "ERROR: settings.json could not be written or is invalid after the merge." -ForegroundColor Red
+    Write-Host "ERROR: settings.json could not be written or is invalid after the merge:" -ForegroundColor Red
+    Write-Host "  $($_.Exception.Message)"
     if ($backup -and (Test-Path $backup)) {
         Copy-Item $backup $SettingsPath -Force
         Write-Host "  Restored settings from $backup"
