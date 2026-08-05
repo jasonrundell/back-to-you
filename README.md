@@ -80,6 +80,26 @@ Cloning avoids this entirely — `git` doesn't set the quarantine flag. That's w
 
 </details>
 
+<details>
+<summary>Installed but still hearing nothing?</summary>
+
+Run the diagnostic script from the repo you cloned:
+
+```bash
+sh tools/doctor.sh
+```
+
+It checks the whole chain a sound depends on — that `~/.claude/settings.json` actually has the five Back to You hooks wired, that the installed hook scripts exist and are executable, that they don't still carry the quarantine flag from a downloaded zip, that the active theme has clips in every category folder, and finally plays a real clip with `afplay` so you can confirm you hear it. Each failing line names the fix.
+
+A few things it can't check for you:
+
+- **Did you restart Claude Code after installing?** Hooks are only read at session start.
+- **Is your Mac's output device or volume actually on?** Check System Settings → Sound, and whether Focus/Do Not Disturb is silencing alerts.
+
+If `tools/doctor.sh` reports everything is fine and you still hear nothing, [open an issue](https://github.com/jasonrundell/back-to-you/issues) with its output.
+
+</details>
+
 ### Windows
 
 1. Download the zip from [Releases](https://github.com/jasonrundell/back-to-you/releases)
