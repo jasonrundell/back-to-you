@@ -64,6 +64,7 @@ The settings merge therefore runs through `osascript -l JavaScript` (JXA), which
     ├── Test-TaskCompleteRandomness.ps1  # Windows clip distribution
     ├── test-clip-selection.sh           # shell clip distribution
     ├── test-classification.sh           # Stop hook question detection
+    ├── test-subagent-suppression.sh     # Stop hook redundant-clip suppression
     └── test-merge-settings.js           # macOS settings merge (needs node)
 ```
 
@@ -156,6 +157,8 @@ Claude `Stop` hook. Reads the hook payload from standard input, checks whether `
 
 **The question detection differs between the two, deliberately.** PowerShell's `-match` anchors `$` at the end of the whole string. `grep` anchors it at the end of *every* line, so a literal translation would play the decision-needed clip for any multi-line answer that merely contains a question — which is most of them. The shell version therefore classifies on the **last non-empty line**. `tests/test-classification.sh` is the regression guard.
 
+**Before playing a task-complete clip, it checks for a recent subagent-done marker and skips its own clip if one exists.** `SubagentStop` and `Stop` are distinct events, but when a subagent is the last thing a turn does, `SubagentStop`'s clip plays moments before this hook fires — two "done" clips back to back for what reads as one completion. `hooks/play-category.*` timestamps that moment in `$CLAUDE_DIR/.subagent-done-at`; this hook skips its clip when that file is 5 seconds old or less, and always deletes it, so the marker cannot suppress an unrelated `Stop` later. A real decision-needed question still plays regardless of the marker — it is a distinct request for input, not a duplicate announcement. `tests/test-subagent-suppression.sh` is the regression guard.
+
 ### `hooks/play-category.ps1` and `hooks/play-category.sh`
 
 Takes a category name and plays a random clip from it. Used by every wired event **except** `Stop`, which has to work out its own category first.
@@ -166,6 +169,8 @@ play-category.sh  subagent-done                  # SubagentStop
 ```
 
 One parameterised script rather than one script per event: four events differ only in which folder they read, and four near-identical files per platform would be eight files to keep in step.
+
+**When the category is `subagent-done` and a clip plays, it writes the current time to `$CLAUDE_DIR/.subagent-done-at`.** That marker is what lets `play-sound.*` detect and skip a redundant task-complete clip moments later — see above. No other category writes it.
 
 All four hook scripts exit quietly — and with status 0 — when the resolved folder holds no sounds. A non-zero exit surfaces a hook error in the transcript, which a missing sound file does not warrant.
 
@@ -204,6 +209,7 @@ Five decisions behind that table, each verified against the hook reference:
 
 
 - **`SessionStart` is deliberately not wired.** It was, matched to `startup` alone so the greeting would not replay on `resume`, `clear`, `compact`, or `fork`. That was not enough. `startup` means every new **session**, not every app launch, and short-lived sessions are common: instrumenting the hook over a six-hour run caught 25 `SessionStart:startup` events — about four an hour, **69% of every sound heard**, with bursts as tight as four in 43 seconds, and 48% of them from a bare `$HOME` cwd rather than any project. Subagents are *not* the cause; none of the 25 carried an `agent_id`, and a subagent costs only its `SubagentStop` whisper. The greeting was also the least useful clip in the set — a session starting is the one moment the terminal already has your attention, which is precisely what `task-complete` and `decision-needed` exist to cover when it does not. Re-wire it in `tools/merge-settings.*` if you want it back, but note that reinstalling strips any entry pointing at our own scripts.
+- **`SubagentStop` and `Stop` can double up.** They are separate events for separate things — a subagent finishing versus the whole turn ending — but when a subagent is the turn's last action, they fire moments apart. Left alone that plays `subagent-done` and then `task-complete` back to back for what is really one completion. `play-category.*` timestamps the subagent-done moment and `play-sound.*` skips its own clip when that timestamp is recent; see `hooks/play-sound.ps1` and `hooks/play-sound.sh` above.
 - **`StopFailure` does not mean "Claude's work failed".** It fires when a turn ends on an **API error** — rate limit, auth failure, server error. Still the right trigger for the `error` clips, but not what the name suggests. It also cannot block: its output and exit code are ignored, which suits a hook that only makes a noise.
 - **`PostToolUseFailure` is deliberately not wired.** It fires on *every* failed tool call, including a `grep` that matches nothing and a red test run. An error sound there is a constant buzz and is the kind of thing that gets a project uninstalled on day one.
 

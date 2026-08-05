@@ -13,6 +13,26 @@ if ($lastMsg -match '\?[^a-zA-Z0-9]*$') {
     $category = "task-complete"
 }
 
+# Skip a redundant clip right after a subagent finished. When a subagent is
+# the last thing a turn does, SubagentStop's subagent-done clip plays moments
+# before this Stop hook fires - two "done" clips back to back for one
+# completion. play-category.ps1 timestamps that moment; if it is recent, this
+# Stop needs no clip of its own. The marker is single-use either way, and only
+# task-complete is skipped - a real decision-needed question is a distinct
+# request for input, not a duplicate announcement.
+$marker = "$env:USERPROFILE\.claude\.subagent-done-at"
+if (Test-Path $marker) {
+    $marked = 0
+    try { $marked = [int64]((Get-Content $marker -Raw).Trim()) } catch { }
+    Remove-Item $marker -ErrorAction SilentlyContinue
+    if ($category -eq "task-complete" -and $marked -gt 0) {
+        $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        if (($now - $marked) -le 5) {
+            exit 0
+        }
+    }
+}
+
 # Active theme lives in one line of text so switching packs needs no reinstall.
 $themeFile = "$env:USERPROFILE\.claude\sound-theme.txt"
 $theme = if (Test-Path $themeFile) { (Get-Content $themeFile -Raw).Trim() } else { "claude" }
