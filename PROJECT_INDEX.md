@@ -71,7 +71,7 @@ The settings merge therefore runs through `osascript -l JavaScript` (JXA), which
 
 Both installers follow the same sequence. `$CLAUDE` below is `%USERPROFILE%\.claude` on Windows and `~/.claude` on macOS.
 
-1. The user runs `install.bat` (Windows) or `install.sh` / `install.command` (macOS), optionally passing a theme name. Default `claude`.
+1. The user runs `install.bat` (Windows) or `install.sh` / `install.command` (macOS), optionally passing a theme name. Without one, and when run interactively, the installer lists the packs found under `sounds/` and prompts for a choice (default `claude`); non-interactive runs (e.g. piped) default straight to `claude`.
 2. The installer verifies a matching folder exists under `sounds/` and that its `task-complete` and `decision-needed` folders are non-empty, listing the available themes if not. The macOS installer additionally checks that `afplay`, `osascript`, and `plutil` are present.
 3. The installer creates the hook and sound directories under `$CLAUDE`.
 4. The installer copies hook scripts from `hooks/` and the entire `sounds/` tree, so every theme present is installed. macOS then makes the hook scripts executable.

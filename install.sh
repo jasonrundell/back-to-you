@@ -1,7 +1,7 @@
 #!/bin/sh
 # Back to You - a voice for Claude Code. Installer for macOS.
 #
-#   ./install.sh            installs every theme, activates claude
+#   ./install.sh            installs every theme, prompts you to pick one
 #   ./install.sh mytheme    installs every theme, activates sounds/mytheme
 #
 # Mirrors install.bat beat for beat so the two stay comparable. Depends on
@@ -12,12 +12,61 @@ set -eu
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 CLAUDE_DIR="$HOME/.claude"
 SETTINGS="$CLAUDE_DIR/settings.json"
-THEME="${1:-claude}"
 
 fail() {
     printf 'ERROR: %s\n' "$1" >&2
     exit 1
 }
+
+# --- pick a voice pack -------------------------------------------------------
+# A theme argument skips the prompt entirely, so scripted / non-interactive
+# installs (curl | sh, CI, etc.) behave exactly as before.
+
+if [ $# -ge 1 ]; then
+    THEME="$1"
+elif [ -t 0 ]; then
+    i=0
+    default_i=1
+    for d in "$SCRIPT_DIR"/sounds/*/; do
+        [ -d "$d" ] || continue
+        i=$((i + 1))
+        name=$(basename "$d")
+        eval "PACK_$i=\$name"
+        if [ "$name" = "claude" ]; then
+            default_i=$i
+        fi
+    done
+    pack_count=$i
+
+    printf 'Choose a voice pack:\n\n'
+    i=0
+    while [ "$i" -lt "$pack_count" ]; do
+        i=$((i + 1))
+        eval "name=\$PACK_$i"
+        if [ "$i" -eq "$default_i" ]; then
+            printf '  %d) %s (default)\n' "$i" "$name"
+        else
+            printf '  %d) %s\n' "$i" "$name"
+        fi
+    done
+    printf '\n'
+    printf 'Pick a number [%d]: ' "$default_i"
+    read -r choice || choice=""
+    choice="${choice:-$default_i}"
+
+    case "$choice" in
+        ''|*[!0-9]*)
+            fail "\"$choice\" isn't one of the choices above."
+            ;;
+    esac
+    if [ "$choice" -lt 1 ] || [ "$choice" -gt "$pack_count" ]; then
+        fail "\"$choice\" isn't one of the choices above."
+    fi
+    eval "THEME=\$PACK_$choice"
+    printf '\n'
+else
+    THEME="claude"
+fi
 
 # --- pre-flight ------------------------------------------------------------
 

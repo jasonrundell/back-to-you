@@ -50,7 +50,7 @@ cd back-to-you
 ./install.sh
 ```
 
-Restart Claude Code. That's it.
+You'll be asked to pick a voice pack — `claude`, `gigatron`, `jay-run`, or `mistress-of-pain` — with `claude` as the default if you just press Enter. Restart Claude Code. That's it.
 
 Needs nothing beyond a stock macOS — no Homebrew, no `jq`, no Python, no Node.
 
@@ -70,7 +70,8 @@ Cloning avoids this entirely — `git` doesn't set the quarantine flag. That's w
 1. Download the zip from [Releases](https://github.com/jasonrundell/back-to-you/releases)
 2. Right-click it and choose **Extract All**
 3. Open the extracted folder and double-click **`install.bat`**
-4. Restart Claude Code
+4. Pick a voice pack when prompted — `claude`, `gigatron`, `jay-run`, or `mistress-of-pain` — or press Enter for `claude`
+5. Restart Claude Code
 
 Uses PowerShell, which is already on your PC. Nothing else to install.
 
@@ -169,6 +170,8 @@ sounds/mytheme/
 ./install.sh mytheme      # macOS
 install.bat mytheme       # Windows
 ```
+
+Naming a theme on the command line skips the interactive picker — handy for scripting. Leave it off and `mytheme` shows up as a numbered choice alongside the built-in packs.
 
 Every theme on disk gets installed; the active one is named in `~/.claude/sound-theme.txt`. Edit that one line to switch — it takes effect on the next sound, with no reinstall and no restart.
 
