@@ -111,6 +111,14 @@ macOS support is new and hasn't been through many hands yet. If something breaks
 
 Also works with **Cowork**, which reads the same hooks.
 
+## FAQ
+
+**Why don't I hear sounds in a cloud session (Claude Code on the web, or a cloud session opened through the desktop app)?**
+
+Hooks run wherever the session itself runs. A local `claude` CLI session runs on your machine, so `afplay` (or PowerShell) can reach your speakers. A cloud session runs inside an isolated remote container instead, with no path to your local audio hardware — the hook command genuinely executes, it just has nothing to play through. Cloud sessions also only load hooks from repository-level (`.claude/settings.json`) and organization-managed settings, not your machine's `~/.claude/settings.json`, so the entries this installer wires wouldn't even be read there.
+
+There's no supported way today to make a cloud session play sound on your local machine — that would need a client-side hook or notification callback from Claude Code itself, which is outside what this repo's scripts can do. If you rely on audio feedback, run Claude Code locally.
+
 ## Turning it off
 
 **One sound too many?** Delete the clips from that folder and it stops. The hooks exit quietly when a folder is empty — no settings to edit, no reinstall.
