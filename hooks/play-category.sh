@@ -67,6 +67,16 @@ index=$(( rand % count + 1 ))
 clip=$(printf '%s\n' "$list" | sed -n "${index}p")
 [ -n "$clip" ] || exit 0
 
+# --- mark subagent completion -----------------------------------------------
+# SubagentStop and Stop are distinct events, but when a subagent is the last
+# thing a turn does, Stop fires moments after this one - two "done" clips back
+# to back for what reads as one completion. Timestamp it so play-sound.sh can
+# skip its own clip when it fires immediately after. Only subagent-done needs
+# this: it is the only category that can precede Stop close enough to double up.
+if [ "$category" = "subagent-done" ]; then
+    date +%s > "$CLAUDE_DIR/.subagent-done-at" 2>/dev/null || true
+fi
+
 # --- play ------------------------------------------------------------------
 # `afplay` blocks until the clip ends. The watchdog is here because a user can
 # drop a three-minute file into a theme folder.

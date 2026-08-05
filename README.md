@@ -150,6 +150,8 @@ Notification ──→ 🔊 "Your call."
 
 `Notification` is matched to the types that are genuinely a request for input, and `PreToolUse` to `AskUserQuestion` — the picker has no notification type of its own, and would otherwise be the one decision-shaped moment that stays silent. `PostToolUseFailure` is deliberately left alone: it fires on every failed tool call, including a `grep` that finds nothing, and would buzz constantly.
 
+**`SubagentStop` and `Stop` can fire moments apart.** When a subagent is the last thing a turn does, you'd otherwise hear the subagent-done clip and then task-complete right after it — two "done" sounds for one finished task. The `Stop` hook checks for that and skips its own clip when it fires immediately after a subagent-done one. A real question still gets its decision-needed clip either way.
+
 **`SessionStart` is deliberately not wired**, and there is no startup greeting. Earlier versions wired it, matched to `startup` so it wouldn't replay on `/clear` or after a compaction. That wasn't enough: `startup` means every new *session*, not every app launch, and short-lived sessions are common. Measured over a six-hour run it fired about four times an hour and accounted for **69% of every sound heard**, in bursts as tight as four in 43 seconds. It was also the least useful of the set — a session starting is the one moment you're already looking at the terminal, which is exactly what `task-complete` and `decision-needed` are for. Reinstalling removes the hook from an existing install.
 
 The installer merges these into `~/.claude/settings.json` without touching anything else in it, backing the file up first:

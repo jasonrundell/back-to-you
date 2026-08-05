@@ -37,6 +37,16 @@ $dir = "$env:USERPROFILE\.claude\sounds\$theme\$Category"
 Add-Type -AssemblyName PresentationCore
 $files = Get-ChildItem "$dir\*.mp3", "$dir\*.wav" -ErrorAction SilentlyContinue
 if ($files) {
+    # SubagentStop and Stop are distinct events, but when a subagent is the
+    # last thing a turn does, Stop fires moments after this one - two "done"
+    # clips back to back for what reads as one completion. Timestamp it so
+    # play-sound.ps1 can skip its own clip when it fires immediately after.
+    if ($Category -eq 'subagent-done') {
+        try {
+            [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() | Out-File -FilePath "$env:USERPROFILE\.claude\.subagent-done-at" -Encoding ascii -NoNewline
+        } catch { }
+    }
+
     $f = ($files | Get-Random).FullName
     $player = New-Object System.Windows.Media.MediaPlayer
     $player.Open([uri]::new($f))

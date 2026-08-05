@@ -60,6 +60,26 @@ if [ -n "$msg" ]; then
     esac
 fi
 
+# --- skip a redundant clip right after a subagent finished ------------------
+# When a subagent is the last thing a turn does, SubagentStop's subagent-done
+# clip plays moments before this Stop hook fires - two "done" clips back to
+# back for one completion. play-category.sh timestamps that moment; if it is
+# recent, this Stop needs no clip of its own. The marker is single-use either
+# way, and only task-complete is skipped - a real decision-needed question is
+# a distinct request for input, not a duplicate announcement.
+
+marker="$CLAUDE_DIR/.subagent-done-at"
+if [ -f "$marker" ]; then
+    marked=$(tr -dc '0-9' < "$marker" 2>/dev/null)
+    rm -f "$marker" 2>/dev/null
+    if [ "$category" = "task-complete" ] && [ -n "$marked" ]; then
+        now=$(date +%s)
+        if [ $((now - marked)) -le 5 ]; then
+            exit 0
+        fi
+    fi
+fi
+
 # --- resolve the active theme ----------------------------------------------
 # One line of text, read fresh every time, so switching packs needs no
 # reinstall and no Claude restart.
