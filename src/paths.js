@@ -17,6 +17,7 @@ function hookFacts() {
     return {
       soundHook: 'play-sound.ps1',
       categoryHook: 'play-category.ps1',
+      support: [],
       // -File keeps arguments out of the parser, and -NoProfile matters: a
       // user profile would run on every single response.
       invoke: (p) => `powershell -NoProfile -ExecutionPolicy Bypass -File "${p}"`,
@@ -25,6 +26,8 @@ function hookFacts() {
   return {
     soundHook: 'play-sound.js',
     categoryHook: 'play-category.js',
+    // Both Unix hooks require this; it is never invoked directly.
+    support: ['play-lib.js'],
     // `node <path>` rather than a shebang plus chmod +x. Without the execute
     // bit a shebang hook is a silent no-op, which this project treats as the
     // worst failure mode there is; naming the interpreter removes the failure

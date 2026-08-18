@@ -384,4 +384,63 @@ test('a missing hook script aborts before anything is written', () => {
   assert.ok(!fs.existsSync(path.join(home, 'sounds')), 'nothing may be written before the check passes');
 });
 
+console.log('\nhook classification (must match play-sound.ps1 exactly)');
+
+const { classify } = require('../hooks/play-sound');
+const { PLAYERS } = require('../hooks/play-lib');
+
+test('a trailing question mark means decision-needed', () => {
+  assert.equal(classify('Want me to push it?'), 'decision-needed');
+});
+
+test('a question mark followed by punctuation still counts', () => {
+  // The PowerShell regex is '\?[^a-zA-Z0-9]*$' - `right?"` and `ok?)` count.
+  assert.equal(classify('You said "is it right?"'), 'decision-needed');
+  assert.equal(classify('(shall I?)'), 'decision-needed');
+  assert.equal(classify('Done?  '), 'decision-needed', 'trailing whitespace is trimmed first');
+});
+
+test('a statement means task-complete', () => {
+  assert.equal(classify('That is finished.'), 'task-complete');
+  assert.equal(classify(''), 'task-complete');
+  assert.equal(classify(undefined), 'task-complete');
+});
+
+test('a question mid-message does not count', () => {
+  // This is the case the sh hook took the last non-empty line to protect
+  // against, because grep anchors at the end of every line.
+  assert.equal(classify('Is it right? Yes. I pushed it.'), 'task-complete');
+  assert.equal(classify('Should I?\nI went ahead and did it.'), 'task-complete');
+});
+
+test('a question on the last line of a multi-line message counts', () => {
+  assert.equal(classify('Pushed the branch.\n\nAnything else?'), 'decision-needed');
+});
+
+console.log('\nplayer probe order (settled by #25)');
+
+test('aplay is gated to wav — it renders an mp3 as noise and exits 0', () => {
+  const aplay = PLAYERS.find((p) => p.cmd === 'aplay');
+  assert.deepEqual(aplay.formats, ['.wav']);
+});
+
+test('mpg123 is gated to mp3 — it cannot play wav', () => {
+  const mpg = PLAYERS.find((p) => p.cmd === 'mpg123');
+  assert.deepEqual(mpg.formats, ['.mp3']);
+});
+
+test('ffplay is excluded — it exits 0 with no audio device', () => {
+  assert.equal(PLAYERS.find((p) => p.cmd === 'ffplay'), undefined);
+});
+
+test('pw-play is probed before paplay, and paplay is kept for WSL', () => {
+  const linux = PLAYERS.filter((p) => p.platform === 'linux').map((p) => p.cmd);
+  assert.deepEqual(linux, ['pw-play', 'paplay', 'mpg123', 'play', 'aplay']);
+});
+
+test('macOS uses afplay and nothing else', () => {
+  const mac = PLAYERS.filter((p) => p.platform === 'darwin').map((p) => p.cmd);
+  assert.deepEqual(mac, ['afplay']);
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ', with failures above' : ''}\n`);

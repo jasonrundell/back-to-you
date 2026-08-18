@@ -108,10 +108,15 @@ function runFullInstall({ pack, version, root, sourceSounds, sourceHooks, log })
   const soundsFrom = sourceSounds || packageSoundsDir();
   const hooksFrom = sourceHooks || path.join(__dirname, '..', 'hooks');
 
-  // The hook files must exist before anything is written. A missing hook is
-  // the silent no-op this project treats as its worst failure mode, so it is
-  // caught here rather than discovered later.
-  for (const name of [facts.soundHook, facts.categoryHook]) {
+  // Every file the hooks need, including the shared library they require but
+  // that settings.json never names.
+  const hookFiles = [facts.soundHook, facts.categoryHook, ...(facts.support || [])];
+
+  // These must exist before anything is written. A missing hook is the silent
+  // no-op this project treats as its worst failure mode, so it is caught here
+  // rather than discovered later - and a missing support file would break the
+  // hooks just as completely while being far less obvious.
+  for (const name of hookFiles) {
     if (!fs.existsSync(path.join(hooksFrom, name))) {
       throw new Error(`Hook script missing from the package: hooks/${name}`);
     }
@@ -124,7 +129,7 @@ function runFullInstall({ pack, version, root, sourceSounds, sourceHooks, log })
   copyDir(soundsFrom, paths.soundsDir);
   lines.push('ok  Sound packs copied');
 
-  for (const name of [facts.soundHook, facts.categoryHook]) {
+  for (const name of hookFiles) {
     fs.copyFileSync(path.join(hooksFrom, name), path.join(paths.hooksDir, name));
   }
   lines.push('ok  Hook scripts installed');
