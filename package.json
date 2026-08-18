@@ -1,0 +1,44 @@
+{
+  "name": "backtoyou",
+  "version": "1.2.0",
+  "description": "A voice for Claude Code — voices by elevenlabs.io. Says \"Back to you.\" when a task finishes and \"Waiting on you.\" when it needs a decision.",
+  "bin": {
+    "backtoyou": "bin/cli.js"
+  },
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "files": [
+    "bin/",
+    "src/",
+    "hooks/",
+    "sounds/",
+    "LICENSE",
+    "LICENSE-AUDIO",
+    "NOTICE",
+    "ELEVENLABS-VOICE-PROMPT.md"
+  ],
+  "keywords": [
+    "claude-code",
+    "claude",
+    "hooks",
+    "notification",
+    "sound",
+    "voice",
+    "elevenlabs"
+  ],
+  "homepage": "https://github.com/jasonrundell/back-to-you#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jasonrundell/back-to-you.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jasonrundell/back-to-you/issues"
+  },
+  "author": "Jason Rundell",
+  "scripts": {
+    "test": "node tests/installer.test.js"
+  }
+}
