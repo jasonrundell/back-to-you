@@ -33,3 +33,15 @@ Issue #26. What does a `npx backtoyou` session actually look like — on a first
 **4. The unknown-pack error had the wrong path in it.** `install.sh` points the user at its own checkout; under npx that path does not exist. Now fixed to name the pack rather than a directory, but "available packs" still depends on question 3.
 
 **5. Non-interactive is a silent default today.** `install.sh` falls back to `claude` when stdin is not a TTY, with no output. Under `npx` — where piping and CI are more likely — scenario `[8]` prints a line saying so instead. Worth confirming that is wanted.
+
+---
+
+## Verdict (issue #26, closed)
+
+**Variant B wins.** The re-run knows it is installed; the picker defaults to the active pack; a plain switch writes only `sound-theme.txt` — no copy, no settings merge, no restart. Picking the active pack exits "nothing to do". Fresh installs and version upgrades still take the full path.
+
+**Custom packs live in `~/.claude/sounds/`,** and the picker shows the union of those and the packs in the tarball. This is the question above that the ticket had not anticipated.
+
+**Non-TTY installs `claude` and announces it,** rather than choosing silently as `install.sh` does today.
+
+Full reasoning is on the closed issue. `plan.mjs` is the half that lifts into the real CLI (#30); `tui.mjs` stops here.
