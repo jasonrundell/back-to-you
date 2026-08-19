@@ -386,8 +386,15 @@ test('a missing hook script aborts before anything is written', () => {
 
 console.log('\nhook classification (must match play-sound.ps1 exactly)');
 
-const { classify } = require('../hooks/play-sound');
-const { PLAYERS } = require('../hooks/play-lib');
+// play-lib resolves ~/.claude at require time, so the sandbox has to be in
+// place before these are loaded. Everything above this line has already run.
+const HOOK_HOME = sandbox();
+process.env.HOME = HOOK_HOME;
+process.env.USERPROFILE = HOOK_HOME;
+os.homedir = () => HOOK_HOME;
+
+const { classify, shouldSkip } = require('../hooks/play-sound');
+const { PLAYERS, MARKER } = require('../hooks/play-lib');
 
 test('a trailing question mark means decision-needed', () => {
   assert.equal(classify('Want me to push it?'), 'decision-needed');
@@ -415,6 +422,50 @@ test('a question mid-message does not count', () => {
 
 test('a question on the last line of a multi-line message counts', () => {
   assert.equal(classify('Pushed the branch.\n\nAnything else?'), 'decision-needed');
+});
+
+console.log('\nsubagent suppression (ported from tests/test-subagent-suppression.sh)');
+
+const writeMarker = (secondsAgo) => {
+  fs.mkdirSync(path.dirname(MARKER), { recursive: true });
+  fs.writeFileSync(MARKER, String(Math.floor(Date.now() / 1000) - secondsAgo), 'utf8');
+};
+
+test('a fresh marker suppresses a task-complete clip', () => {
+  writeMarker(1);
+  assert.equal(shouldSkip('task-complete'), true);
+});
+
+test('the marker is single-use, even when it suppressed nothing', () => {
+  writeMarker(1);
+  shouldSkip('task-complete');
+  assert.equal(fs.existsSync(MARKER), false, 'must be consumed');
+  assert.equal(shouldSkip('task-complete'), false, 'a second Stop must play');
+});
+
+test('a stale marker does not suppress', () => {
+  // The sh hook used a 5-second window; anything older is a separate turn.
+  writeMarker(6);
+  assert.equal(shouldSkip('task-complete'), false);
+});
+
+test('decision-needed is never suppressed', () => {
+  // A real question is a distinct request for input, not a duplicate
+  // announcement - but the marker is still consumed.
+  writeMarker(1);
+  assert.equal(shouldSkip('decision-needed'), false);
+  assert.equal(fs.existsSync(MARKER), false, 'consumed either way');
+});
+
+test('no marker means no suppression', () => {
+  try { fs.unlinkSync(MARKER); } catch { /* already gone */ }
+  assert.equal(shouldSkip('task-complete'), false);
+});
+
+test('a corrupt marker is treated as absent, not fatal', () => {
+  fs.mkdirSync(path.dirname(MARKER), { recursive: true });
+  fs.writeFileSync(MARKER, 'not a number', 'utf8');
+  assert.equal(shouldSkip('task-complete'), false);
 });
 
 console.log('\nplayer probe order (settled by #25)');
