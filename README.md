@@ -24,7 +24,7 @@ _"Back to you."_
 Back to You gives [Claude Code](https://code.claude.com/docs) a quiet voice. It says "Back to you." when a task finishes and "Waiting on you." when it needs a decision — short, flat, never enthusiastic, like a competent engineer sitting beside you. Every clip is original audio made for this, not game sounds borrowed from elsewhere.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jasonrundell/back-to-you/main/assets/demo.svg" alt="A task finishes and the voice says &quot;That's finished.&quot; Then Claude asks a question and the voice says &quot;Your call.&quot;" width="820">
+  <img src="https://raw.githubusercontent.com/jasonrundell/back-to-you/main/assets/demo.svg" alt="A task finishes and the voice says &quot;Back to you.&quot; Then Claude asks a question and the voice says &quot;Waiting on you.&quot;" width="820">
 </p>
 
 <!--
