@@ -108,15 +108,15 @@ function stripOwnedHooks(hooks) {
 }
 
 /**
- * Rewrite settings.json in place.
+ * Read settings.json, hand the parsed config to `mutate`, write it back.
  *
- * Throws on any problem, leaving the file untouched - the caller restores its
- * backup. Never falls through to writing a fresh file: that is exactly the
- * clobbering this is built to avoid.
+ * Shared by installing and uninstalling so the delicate parts - BOM handling,
+ * refusing to clobber, atomic write - exist once. Throws on any problem,
+ * leaving the file untouched, so the caller can restore its backup.
  *
- * @returns {{removed: number, installed: number}}
+ * @returns whatever `mutate` returns, plus `hadBom`
  */
-function mergeSettings(settingsPath, hooksDir, facts) {
+function editSettings(settingsPath, mutate) {
   let raw = null;
   try {
     raw = fs.readFileSync(settingsPath, 'utf8');
@@ -148,22 +148,10 @@ function mergeSettings(settingsPath, hooksDir, facts) {
     config.hooks = {};
   }
 
-  const removed = stripOwnedHooks(config.hooks);
-  const plan = hookPlan(hooksDir, facts);
+  const result = mutate(config);
 
-  for (const entry of plan) {
-    if (!Array.isArray(config.hooks[entry.event])) config.hooks[entry.event] = [];
-
-    // An explicit short timeout: Claude Code's default for command hooks is
-    // ten minutes, which is no safety net at all for something attached to
-    // the end of every response.
-    const group = { hooks: [{ type: 'command', command: entry.command, timeout: 10 }] };
-    if (entry.matcher !== null) group.matcher = entry.matcher;
-    config.hooks[entry.event].push(group);
-  }
-
-  // Drop events left empty by the strip, so unwiring an event we used to
-  // wire does not leave `"SomeEvent": []` behind in the user's file.
+  // Drop events left empty, so unwiring an event we used to wire does not
+  // leave `"SomeEvent": []` behind in the user's file.
   for (const eventName of Object.keys(config.hooks)) {
     if (Array.isArray(config.hooks[eventName]) && config.hooks[eventName].length === 0) {
       delete config.hooks[eventName];
@@ -172,7 +160,51 @@ function mergeSettings(settingsPath, hooksDir, facts) {
 
   const body = JSON.stringify(config, null, 2) + '\n';
   writeAtomically(settingsPath, hadBom ? '﻿' + body : body);
-  return { removed, installed: plan.length, hadBom };
+  return { ...result, hadBom };
+}
+
+/**
+ * Strip our entries, then write the current plan back.
+ *
+ * A rewrite rather than a merge: that is what lets an upgrade correct an
+ * entry an older version got wrong.
+ *
+ * @returns {{removed: number, installed: number, hadBom: boolean}}
+ */
+function mergeSettings(settingsPath, hooksDir, facts) {
+  return editSettings(settingsPath, (config) => {
+    const removed = stripOwnedHooks(config.hooks);
+    const plan = hookPlan(hooksDir, facts);
+
+    for (const entry of plan) {
+      if (!Array.isArray(config.hooks[entry.event])) config.hooks[entry.event] = [];
+
+      // An explicit short timeout: Claude Code's default for command hooks is
+      // ten minutes, which is no safety net at all for something attached to
+      // the end of every response.
+      const group = { hooks: [{ type: 'command', command: entry.command, timeout: 10 }] };
+      if (entry.matcher !== null) group.matcher = entry.matcher;
+      config.hooks[entry.event].push(group);
+    }
+
+    return { removed, installed: plan.length };
+  });
+}
+
+/**
+ * Strip our entries and write nothing back in their place.
+ *
+ * The uninstall half of mergeSettings: same read, same BOM handling, same
+ * refusal to clobber, minus the rewrite. Everything belonging to the user -
+ * unrelated top-level keys, third-party hooks sharing a group with ours -
+ * survives untouched.
+ *
+ * @returns {{removed: number, hadBom: boolean}}
+ */
+function unwireSettings(settingsPath) {
+  return editSettings(settingsPath, (config) => ({
+    removed: stripOwnedHooks(config.hooks),
+  }));
 }
 
 function writeAtomically(target, text) {
@@ -181,4 +213,11 @@ function writeAtomically(target, text) {
   fs.renameSync(tmp, target);
 }
 
-module.exports = { mergeSettings, stripOwnedHooks, hookPlan, isOwnedCommand, OWNED_SCRIPTS };
+module.exports = {
+  mergeSettings,
+  unwireSettings,
+  stripOwnedHooks,
+  hookPlan,
+  isOwnedCommand,
+  OWNED_SCRIPTS,
+};

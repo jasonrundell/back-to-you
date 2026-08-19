@@ -21,6 +21,7 @@ const {
   runFullInstall,
   writeTheme,
 } = require('../src/install');
+const { runUninstall, isInstalled } = require('../src/uninstall');
 
 const VERSION = require('../package.json').version;
 
@@ -30,11 +31,13 @@ const err = (s = '') => process.stderr.write(`${s}\n`);
 function usage() {
   out('Back to You — a voice for Claude Code, by elevenlabs.io');
   out('');
-  out('  npx backtoyou           pick a voice pack, or switch the active one');
-  out('  npx backtoyou <pack>    activate <pack> without prompting');
+  out('  npx backtoyou             pick a voice pack, or switch the active one');
+  out('  npx backtoyou <pack>      activate <pack> without prompting');
+  out('  npx backtoyou --uninstall remove it all again');
   out('');
   out('  --help      this message');
   out('  --version   print the version');
+  out('  --yes       skip the uninstall confirmation (required when not a terminal)');
 }
 
 function ask(question) {
@@ -64,6 +67,68 @@ async function pick(packs, fallback) {
   return chosen;
 }
 
+/**
+ * Remove everything this project installed.
+ *
+ * The only destructive path in the CLI, so it is the only one that asks. The
+ * non-TTY rule is deliberately the opposite of installing: an install without
+ * a terminal proceeds and says so, because it is safe and idempotent, but a
+ * deletion that proceeds unasked in a script is how someone loses voice packs
+ * they made.
+ */
+async function uninstall({ assumeYes, interactive }) {
+  const paths = layout();
+
+  if (!isInstalled(null)) {
+    out('Back to You is not installed — nothing to remove.');
+    return 0;
+  }
+
+  if (!assumeYes) {
+    if (!interactive) {
+      err('ERROR: --uninstall needs confirmation, and this is not a terminal.');
+      err('Re-run with --yes if you are sure.');
+      return 1;
+    }
+    out('This removes Back to You from ~/.claude:');
+    out('  the hook scripts, the clips this package shipped, and its settings.json entries.');
+    out('');
+    out('Voice packs you made yourself are kept, and so are your settings backups.');
+    out('');
+    const answer = await ask('Remove it? [y/N]: ');
+    if (!/^y(es)?$/i.test(String(answer).trim())) {
+      out('Left alone.');
+      return 0;
+    }
+    out('');
+  }
+
+  let result;
+  try {
+    result = runUninstall({});
+  } catch (e) {
+    err(`ERROR: ${e.message}`);
+    err('Your settings.json has been restored from its backup.');
+    return 1;
+  }
+
+  result.removed.forEach((r) => out(`  ok  Removed ${r}`));
+  if (result.backup) out(`  ok  Backed up settings to ${result.backup}`);
+
+  out('');
+  if (result.survivors > 0) {
+    out(`Kept ${result.survivors} file${result.survivors === 1 ? '' : 's'} in ${result.soundsDir}`);
+    out('— packs or clips you added, which this never deletes.');
+  }
+  if (result.backupsKept.length > 0) {
+    out(`Kept ${result.backupsKept.length} settings backup${result.backupsKept.length === 1 ? '' : 's'} in ${paths.claudeDir}`);
+    out('— delete them yourself once you are sure you do not need them.');
+  }
+  out('');
+  out('Restart Claude Code to stop the hooks running.');
+  return 0;
+}
+
 async function main(argv) {
   const args = argv.filter((a) => a !== '');
 
@@ -82,6 +147,13 @@ async function main(argv) {
     return 1;
   }
   const arg = positional.length === 1 ? positional[0] : null;
+
+  if (args.includes('--uninstall')) {
+    return uninstall({
+      assumeYes: args.includes('--yes') || args.includes('-y'),
+      interactive: Boolean(process.stdin.isTTY),
+    });
+  }
 
   const paths = layout();
   const install = readInstallState(paths);

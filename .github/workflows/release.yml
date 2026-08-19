@@ -1,0 +1,143 @@
+name: Release
+
+# Publishes backtoyou to npm and attaches the download zip, from one GitHub
+# Release. Nothing is published on a plain tag push: drafting a release and
+# then publishing it is the deliberate human step, and npm publish cannot be
+# taken back.
+#
+# Auth is npm trusted publishing (OIDC) - there is no NPM_TOKEN secret to
+# leak or rotate. This requires a trusted publisher configured at
+# https://www.npmjs.com/package/backtoyou/access naming this repository and
+# THIS FILENAME (release.yml). Rename this file and publishing breaks until
+# the setting is updated to match.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run every check and pack the artifacts, but publish nothing'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # attach the zip to the release
+  id-token: write # required for OIDC trusted publishing
+
+jobs:
+  release:
+    runs-on: ubuntu-latest # POSIX zip: the separator bug came from building on Windows
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Node 22.14 ships npm 10.9.x, which is BELOW the 11.5.1 floor trusted
+      # publishing requires. Upgrading explicitly rather than trusting whatever
+      # the runner image happens to bundle.
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: Tests
+        run: npm test
+
+      # A published version can never be replaced, only superseded, so the tag
+      # and package.json must agree before anything irreversible happens.
+      - name: Version matches the tag
+        if: github.event_name == 'release'
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./package.json').version")
+          echo "tag=$TAG  package.json=$PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG"
+            exit 1
+          fi
+
+      - name: Pack, and prove the licence files are in the tarball
+        run: |
+          npm pack --pack-destination /tmp
+          TB=$(ls /tmp/backtoyou-*.tgz)
+          echo "tarball: $TB"
+          for f in LICENSE LICENSE-AUDIO NOTICE README.md; do
+            if tar -tzf "$TB" | grep -qx "package/$f"; then
+              echo "  ok  $f"
+            else
+              echo "::error::$f is missing from the tarball"
+              exit 1
+            fi
+          done
+
+      # LICENSE-AUDIO and NOTICE are exactly the files npm-packlist drops once
+      # a `files` allowlist exists: LICENSE is force-included by its always-ship
+      # glob, but `-AUDIO` is a filename suffix rather than an extension, and
+      # NOTICE was never in that set. Shipping the mp3s without their terms
+      # would breach LICENSE-AUDIO condition 5, silently. Hence the check above.
+
+      - name: Build the download zip
+        run: |
+          rm -rf /tmp/stage && mkdir -p /tmp/stage/back-to-you
+          cp -R bin src hooks sounds /tmp/stage/back-to-you/
+          cp package.json install.sh install.bat install.command \
+             LICENSE LICENSE-AUDIO NOTICE README.md ELEVENLABS-VOICE-PROMPT.md \
+             /tmp/stage/back-to-you/
+          cd /tmp/stage && zip -qr /tmp/back-to-you.zip back-to-you
+          echo "size: $(du -h /tmp/back-to-you.zip | cut -f1)"
+
+      # The v1.1.1 zip stored 26 of 33 entries with Windows backslashes and
+      # none with forward slashes, so macOS extracted it as a flat pile of
+      # files literally named `hooks\play-sound.sh` and the documented download
+      # path failed at pre-flight. It went unnoticed across three releases
+      # because nothing checked. This is that check.
+      - name: The zip must use forward slashes
+        run: |
+          BAD=$(unzip -Z1 /tmp/back-to-you.zip | grep -c '\\' || true)
+          TOTAL=$(unzip -Z1 /tmp/back-to-you.zip | wc -l)
+          echo "entries: $TOTAL   containing a backslash: $BAD"
+          if [ "$BAD" -ne 0 ]; then
+            echo "::error::$BAD zip entries use backslashes; macOS cannot extract this"
+            unzip -Z1 /tmp/back-to-you.zip | grep '\\' | head
+            exit 1
+          fi
+          for f in back-to-you/install.command back-to-you/bin/cli.js back-to-you/hooks/play-lib.js; do
+            unzip -Z1 /tmp/back-to-you.zip | grep -qx "$f" || {
+              echo "::error::$f missing from the zip"; exit 1; }
+          done
+
+      # A last rehearsal before the irreversible step.
+      - name: Publish dry run
+        run: npm publish --dry-run
+
+      - name: Publish to npm
+        if: github.event_name == 'release' && github.event.release.prerelease == false
+        run: npm publish
+
+      # Deliberately after the publish: if publishing fails the release keeps
+      # no artifacts and can simply be deleted and re-cut. The reverse order
+      # would leave a published version that can never be withdrawn beside a
+      # release that looks incomplete.
+      - name: Attach the zip to the release
+        if: github.event_name == 'release'
+        run: gh release upload "$GITHUB_REF_NAME" /tmp/back-to-you.zip --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Summary
+        run: |
+          {
+            echo "### Release"
+            echo ""
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| version | $(node -p "require('./package.json').version") |"
+            echo "| trigger | ${{ github.event_name }} |"
+            echo "| published | ${{ github.event_name == 'release' && github.event.release.prerelease == false }} |"
+            echo "| zip entries | $(unzip -Z1 /tmp/back-to-you.zip | wc -l) |"
+          } >> "$GITHUB_STEP_SUMMARY"

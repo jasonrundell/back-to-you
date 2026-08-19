@@ -392,10 +392,183 @@ test('a missing hook script aborts before anything is written', () => {
   assert.ok(!fs.existsSync(path.join(home, 'sounds')), 'nothing may be written before the check passes');
 });
 
+console.log('\nuninstall');
+
+const { runUninstall, isInstalled, shippedClips } = require('../src/uninstall');
+const { unwireSettings } = require('../src/settings');
+
+function freshInstall(names = ['claude', 'gigatron']) {
+  const root = sandbox();
+  const src = path.join(root, 'src-sounds');
+  const hooks = path.join(root, 'src-hooks');
+  seedPacks(src, names);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  const home = path.join(root, 'home', '.claude');
+  runFullInstall({ pack: 'claude', version: '1.2.0', root: home, sourceSounds: src, sourceHooks: hooks });
+  writeTheme('claude', home);
+  return { root, src, home, paths: layout(home) };
+}
+
+test('a full uninstall leaves no Back to You files', () => {
+  const { src, home, paths } = freshInstall();
+  runUninstall({ root: home, sourceSounds: src });
+
+  for (const f of [paths.themeFile, paths.versionFile]) {
+    assert.equal(fs.existsSync(f), false, `${path.basename(f)} must be gone`);
+  }
+  const facts = hookFacts();
+  for (const h of [facts.soundHook, facts.categoryHook, ...(facts.support || [])]) {
+    assert.equal(fs.existsSync(path.join(paths.hooksDir, h)), false, `${h} must be gone`);
+  }
+  const cfg = JSON.parse(fs.readFileSync(paths.settings, 'utf8'));
+  assert.deepEqual(cfg.hooks, {}, 'no hook entries may survive');
+});
+
+test('a pack the user made survives', () => {
+  const { src, home, paths } = freshInstall();
+  seedPacks(paths.soundsDir, ['mytheme']);
+  runUninstall({ root: home, sourceSounds: src });
+  assert.ok(
+    fs.existsSync(path.join(paths.soundsDir, 'mytheme', 'task-complete', 'clip.mp3')),
+    'a custom pack must never be deleted'
+  );
+});
+
+test('a clip added inside a SHIPPED pack survives', () => {
+  // The case that makes directory-name matching wrong. The README invites
+  // dropping extra takes into a shipped pack's folder, so user content lives
+  // inside our directories.
+  const { src, home, paths } = freshInstall();
+  const shippedDir = path.join(paths.soundsDir, 'claude', 'task-complete');
+  fs.writeFileSync(path.join(shippedDir, 'my-take.mp3'), 'mine');
+
+  runUninstall({ root: home, sourceSounds: src });
+
+  assert.ok(fs.existsSync(path.join(shippedDir, 'my-take.mp3')), 'the user take must survive');
+  assert.equal(
+    fs.existsSync(path.join(shippedDir, 'clip.mp3')),
+    false,
+    'the shipped clip must go'
+  );
+});
+
+test('emptied pack folders are pruned, but populated ones stay', () => {
+  const { src, home, paths } = freshInstall();
+  fs.writeFileSync(path.join(paths.soundsDir, 'claude', 'error', 'mine.mp3'), 'x');
+  const r = runUninstall({ root: home, sourceSounds: src });
+  assert.equal(fs.existsSync(path.join(paths.soundsDir, 'gigatron')), false, 'fully-emptied pack pruned');
+  assert.ok(fs.existsSync(path.join(paths.soundsDir, 'claude', 'error')), 'folder with a survivor stays');
+  assert.equal(r.survivors, 1);
+});
+
+test('settings backups are kept, and reported', () => {
+  const { src, home, paths } = freshInstall();
+  const r = runUninstall({ root: home, sourceSounds: src });
+  assert.ok(r.backupsKept.length >= 1, 'backups are the recovery path and must survive');
+  for (const b of r.backupsKept) {
+    assert.ok(fs.existsSync(path.join(paths.claudeDir, b)));
+  }
+});
+
+test('unrelated config and third-party hooks survive', () => {
+  const { src, home, paths } = freshInstall();
+  const cfg = JSON.parse(fs.readFileSync(paths.settings, 'utf8'));
+  cfg.model = 'claude-opus-5';
+  cfg.env = { KEEP_ME: 'yes' };
+  cfg.hooks.Stop.push({ hooks: [{ type: 'command', command: 'my-own.sh', timeout: 5 }] });
+  fs.writeFileSync(paths.settings, JSON.stringify(cfg, null, 2));
+
+  runUninstall({ root: home, sourceSounds: src });
+
+  const after = JSON.parse(fs.readFileSync(paths.settings, 'utf8'));
+  assert.equal(after.model, 'claude-opus-5');
+  assert.deepEqual(after.env, { KEEP_ME: 'yes' });
+  const all = Object.values(after.hooks).flatMap((g) => g.flatMap((x) => x.hooks.map((h) => h.command)));
+  assert.deepEqual(all, ['my-own.sh'], 'only the third-party hook remains');
+});
+
+test('a legacy .sh install is unwired and its files removed', () => {
+  const { src, home, paths } = freshInstall();
+  // Simulate a pre-1.2 machine: old scripts on disk, old entries wired.
+  for (const n of ['play-sound.sh', 'play-category.sh', 'play-sound-decision.sh']) {
+    fs.writeFileSync(path.join(paths.hooksDir, n), '# old\n');
+  }
+  fs.writeFileSync(paths.settings, JSON.stringify({
+    hooks: { Stop: [{ hooks: [{ type: 'command', command: '"~/.claude/hooks/play-sound.sh"', timeout: 10 }] }] },
+  }, null, 2));
+
+  runUninstall({ root: home, sourceSounds: src });
+
+  for (const n of ['play-sound.sh', 'play-category.sh', 'play-sound-decision.sh']) {
+    assert.equal(fs.existsSync(path.join(paths.hooksDir, n)), false, `${n} must be removed`);
+  }
+  const after = JSON.parse(fs.readFileSync(paths.settings, 'utf8'));
+  assert.deepEqual(after.hooks, {});
+});
+
+test('uninstalling twice is a no-op, not an error', () => {
+  const { src, home } = freshInstall();
+  runUninstall({ root: home, sourceSounds: src });
+  assert.equal(isInstalled(home), false);
+  const second = runUninstall({ root: home, sourceSounds: src });
+  assert.deepEqual(second.removed, [], 'nothing left to remove');
+});
+
+test('isInstalled is honest before and after', () => {
+  const { src, home } = freshInstall();
+  assert.equal(isInstalled(home), true);
+  runUninstall({ root: home, sourceSounds: src });
+  assert.equal(isInstalled(home), false);
+});
+
+test('install -> uninstall -> install lands where a first install does', () => {
+  const { src, home, paths } = freshInstall();
+  const hooks = path.join(path.dirname(path.dirname(paths.claudeDir)), 'src-hooks');
+  const first = fs.readFileSync(paths.settings, 'utf8');
+
+  runUninstall({ root: home, sourceSounds: src });
+  runFullInstall({ pack: 'claude', version: '1.2.0', root: home, sourceSounds: src, sourceHooks: hooks });
+  writeTheme('claude', home);
+
+  const again = JSON.parse(fs.readFileSync(paths.settings, 'utf8'));
+  assert.deepEqual(again.hooks, JSON.parse(first).hooks, 'reinstall must match a first install');
+  assert.equal(fs.readFileSync(paths.versionFile, 'utf8').trim(), '1.2.0');
+});
+
+test('unwireSettings preserves a UTF-8 BOM', () => {
+  const root = sandbox();
+  const p = path.join(root, 'settings.json');
+  fs.writeFileSync(p, '﻿' + JSON.stringify({
+    model: 'x',
+    hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node "/h/play-sound.js"' }] }] },
+  }, null, 2));
+  const r = unwireSettings(p);
+  assert.equal(r.removed, 1);
+  assert.equal(r.hadBom, true);
+  const written = fs.readFileSync(p, 'utf8');
+  assert.equal(written.charCodeAt(0), 0xfeff, 'BOM must survive the unwire');
+  assert.equal(JSON.parse(written.slice(1)).model, 'x');
+});
+
+test('shippedClips enumerates by relative path', () => {
+  const root = sandbox();
+  seedPacks(root, ['claude']);
+  const rels = shippedClips(root).map((r) => r.split(path.sep).join('/'));
+  assert.ok(rels.includes('claude/task-complete/clip.mp3'));
+  assert.equal(rels.length, 4);
+});
+
 console.log('\nhook classification (must match play-sound.ps1 exactly)');
 
-const { classify } = require('../hooks/play-sound');
-const { PLAYERS } = require('../hooks/play-lib');
+// play-lib resolves ~/.claude at require time, so the sandbox has to be in
+// place before these are loaded. Everything above this line has already run.
+const HOOK_HOME = sandbox();
+process.env.HOME = HOOK_HOME;
+process.env.USERPROFILE = HOOK_HOME;
+os.homedir = () => HOOK_HOME;
+
+const { classify, shouldSkip } = require('../hooks/play-sound');
+const { PLAYERS, MARKER } = require('../hooks/play-lib');
 
 test('a trailing question mark means decision-needed', () => {
   assert.equal(classify('Want me to push it?'), 'decision-needed');
@@ -423,6 +596,50 @@ test('a question mid-message does not count', () => {
 
 test('a question on the last line of a multi-line message counts', () => {
   assert.equal(classify('Pushed the branch.\n\nAnything else?'), 'decision-needed');
+});
+
+console.log('\nsubagent suppression (ported from tests/test-subagent-suppression.sh)');
+
+const writeMarker = (secondsAgo) => {
+  fs.mkdirSync(path.dirname(MARKER), { recursive: true });
+  fs.writeFileSync(MARKER, String(Math.floor(Date.now() / 1000) - secondsAgo), 'utf8');
+};
+
+test('a fresh marker suppresses a task-complete clip', () => {
+  writeMarker(1);
+  assert.equal(shouldSkip('task-complete'), true);
+});
+
+test('the marker is single-use, even when it suppressed nothing', () => {
+  writeMarker(1);
+  shouldSkip('task-complete');
+  assert.equal(fs.existsSync(MARKER), false, 'must be consumed');
+  assert.equal(shouldSkip('task-complete'), false, 'a second Stop must play');
+});
+
+test('a stale marker does not suppress', () => {
+  // The sh hook used a 5-second window; anything older is a separate turn.
+  writeMarker(6);
+  assert.equal(shouldSkip('task-complete'), false);
+});
+
+test('decision-needed is never suppressed', () => {
+  // A real question is a distinct request for input, not a duplicate
+  // announcement - but the marker is still consumed.
+  writeMarker(1);
+  assert.equal(shouldSkip('decision-needed'), false);
+  assert.equal(fs.existsSync(MARKER), false, 'consumed either way');
+});
+
+test('no marker means no suppression', () => {
+  try { fs.unlinkSync(MARKER); } catch { /* already gone */ }
+  assert.equal(shouldSkip('task-complete'), false);
+});
+
+test('a corrupt marker is treated as absent, not fatal', () => {
+  fs.mkdirSync(path.dirname(MARKER), { recursive: true });
+  fs.writeFileSync(MARKER, 'not a number', 'utf8');
+  assert.equal(shouldSkip('task-complete'), false);
 });
 
 console.log('\nplayer probe order (settled by #25)');

@@ -139,16 +139,17 @@ There's no supported way today to make a cloud session play sound on your local 
 ~/.claude/sounds/claude/error/          ← delete these, no more error sounds
 ```
 
-**All of it?** Delete the installed files and remove the `Back to You` entries from `~/.claude/settings.json`:
+**All of it?**
 
+```bash
+npx backtoyou --uninstall
 ```
-~/.claude/hooks/play-sound.js       (.ps1 on Windows)
-~/.claude/hooks/play-category.js    (.ps1 on Windows)
-~/.claude/hooks/play-lib.js         (macOS and Linux only)
-~/.claude/sounds/
-~/.claude/sound-theme.txt
-~/.claude/.backtoyou-version
-```
+
+It asks first, then removes the hook scripts, the clips this package shipped, and its entries in `~/.claude/settings.json` — backing that file up before touching it.
+
+**Two things it deliberately keeps.** Voice packs you made yourself, and any clips you added inside a shipped pack's folder, are never deleted — it matches what it ships file by file rather than deleting whole folders. Your `settings.json` backups stay too; they hold your previous configuration, which is exactly what you want if something went wrong. It tells you what it kept and where.
+
+Add `--yes` to skip the prompt. That's required rather than optional when there's no terminal, so a stray uninstall in a script can't quietly delete your packs.
 
 **Heard nothing after installing?** Look for `~/.claude/.backtoyou-playback-error`. If it exists, it names the clip and what was tried — an empty folder and a missing audio player look identical from the outside, and this tells them apart. If it doesn't exist, playback isn't the problem; check that `settings.json` still has the hook entries.
 
