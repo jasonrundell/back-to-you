@@ -13,7 +13,7 @@ const path = require('node:path');
 const { mergeSettings, isOwnedCommand } = require('../src/settings');
 const { classifyRun, resolvePack, defaultPack, readChoice, planEffects } = require('../src/plan');
 const { availablePacks, readInstallState, checkPack, runFullInstall, writeTheme } = require('../src/install');
-const { layout } = require('../src/paths');
+const { layout, hookFacts } = require('../src/paths');
 
 let passed = 0;
 const test = (name, fn) => {
@@ -300,7 +300,7 @@ test('a full install lands packs, hooks, theme and version', () => {
   const src = path.join(root, 'src-sounds');
   const hooks = path.join(root, 'src-hooks');
   seedPacks(src, ['claude', 'gigatron']);
-  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-sound.ps1', 'play-category.ps1']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
   const home = path.join(root, 'home', '.claude');
 
   runFullInstall({ pack: 'claude', version: '1.2.0', root: home, sourceSounds: src, sourceHooks: hooks });
@@ -310,6 +310,14 @@ test('a full install lands packs, hooks, theme and version', () => {
   assert.ok(fs.existsSync(path.join(paths.soundsDir, 'claude', 'task-complete', 'clip.mp3')));
   assert.ok(fs.existsSync(path.join(paths.soundsDir, 'gigatron', 'task-complete', 'clip.mp3')), 'every pack ships, not just the active one');
   assert.ok(fs.existsSync(paths.settings));
+
+  // Including the support file, which settings.json never names and so would
+  // go missing without anyone noticing until a hook tried to require it.
+  const facts = hookFacts();
+  for (const hook of [facts.soundHook, facts.categoryHook, ...(facts.support || [])]) {
+    assert.ok(fs.existsSync(path.join(paths.hooksDir, hook)), `${hook} must be installed`);
+  }
+
   assert.equal(fs.readFileSync(paths.themeFile, 'utf8').trim(), 'claude');
   assert.equal(fs.readFileSync(paths.versionFile, 'utf8').trim(), '1.2.0');
 });
@@ -319,7 +327,7 @@ test('installing one pack never deletes a custom one', () => {
   const src = path.join(root, 'src-sounds');
   const hooks = path.join(root, 'src-hooks');
   seedPacks(src, ['claude']);
-  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-sound.ps1', 'play-category.ps1']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
   const home = path.join(root, 'home', '.claude');
 
   // A custom pack the user made, already on disk.
