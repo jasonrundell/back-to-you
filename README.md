@@ -1,7 +1,14 @@
+<!--
+  Image URLs are absolute on purpose. npm renders this exact file on the
+  package page, where relative paths do not resolve — and assets/ is
+  deliberately not in the package's `files` allowlist, so they would not ship
+  either. raw.githubusercontent serves these as image/svg+xml, so they render
+  on GitHub and npmjs.com alike.
+-->
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
-    <img src="assets/banner-light.svg" alt="Back to You — a voice for Claude Code" width="820">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/jasonrundell/back-to-you/main/assets/banner-dark.svg">
+    <img src="https://raw.githubusercontent.com/jasonrundell/back-to-you/main/assets/banner-light.svg" alt="Back to You — a voice for Claude Code" width="820">
   </picture>
 </p>
 
@@ -14,10 +21,10 @@ _"Back to you."_
 > You kick off a refactor, switch to your browser, and forget the terminal exists.
 > Ten minutes later Claude has been waiting on a yes/no the whole time.
 
-Back to You gives [Claude Code](https://code.claude.com/docs) a quiet voice. It says "Done." when a task finishes and "Your call." when it needs a decision — short, flat, never enthusiastic, like a competent engineer sitting beside you. Every clip is original audio made for this, not game sounds borrowed from elsewhere.
+Back to You gives [Claude Code](https://code.claude.com/docs) a quiet voice. It says "Back to you." when a task finishes and "Waiting on you." when it needs a decision — short, flat, never enthusiastic, like a competent engineer sitting beside you. Every clip is original audio made for this, not game sounds borrowed from elsewhere.
 
 <p align="center">
-  <img src="assets/demo.svg" alt="A task finishes and the voice says &quot;That's finished.&quot; Then Claude asks a question and the voice says &quot;Your call.&quot;" width="820">
+  <img src="https://raw.githubusercontent.com/jasonrundell/back-to-you/main/assets/demo.svg" alt="A task finishes and the voice says &quot;That's finished.&quot; Then Claude asks a question and the voice says &quot;Your call.&quot;" width="820">
 </p>
 
 <!--
@@ -57,57 +64,62 @@ Want your own? See "Make your own theme" below.
 
 ## Install
 
-### macOS
+One command, the same on macOS, Windows and Linux:
 
 ```bash
-git clone https://github.com/jasonrundell/back-to-you.git
-cd back-to-you
-./install.sh
+npx backtoyou
 ```
 
 You'll be asked to pick a voice pack — `claude`, `gigatron`, `jay-run`, or `mistress-of-pain` — with `claude` as the default if you just press Enter. Restart Claude Code. That's it.
 
-Needs nothing beyond a stock macOS — no Homebrew, no `jq`, no Python, no Node.
+Needs [Node.js](https://nodejs.org). Nothing else — no Homebrew, no `jq`, no Python, and no dependencies of its own.
+
+**Changed your mind about the voice?** Run it again and pick a different one:
+
+```bash
+npx backtoyou
+```
+
+Switching is instant — it rewrites a single line in `~/.claude/sound-theme.txt` and takes effect on the next sound. No reinstall, no restart. Or skip the prompt entirely:
+
+```bash
+npx backtoyou gigatron
+```
 
 <details>
-<summary>Prefer a download to a clone?</summary>
+<summary>Installing from a clone or a download instead</summary>
 
-Grab the zip from [Releases](https://github.com/jasonrundell/back-to-you/releases), unzip it, then double-click `install.command`.
+Both still work, and both run the same installer — `install.sh` and `install.bat` are now three-line shims around it.
 
-macOS quarantines anything downloaded through a browser, so you may see `Operation not permitted`. To clear it, open Terminal, type `xattr -d -r com.apple.quarantine ` (with the trailing space), then drag the unzipped folder into the Terminal window and press Return. Run the installer again.
+```bash
+git clone https://github.com/jasonrundell/back-to-you.git
+cd back-to-you
+./install.sh            # or install.bat on Windows
+```
 
-Cloning avoids this entirely — `git` doesn't set the quarantine flag. That's why it's the headline path.
+Or grab the zip from [Releases](https://github.com/jasonrundell/back-to-you/releases), unzip it, and run the installer inside — on macOS you can double-click `install.command`.
 
-</details>
+There's nothing to `npm install` first: the package has no dependencies, so `node bin/cli.js` runs straight out of the folder.
 
-### Windows
+**macOS quarantines anything downloaded through a browser**, so a zip may give you `Operation not permitted`. To clear it, open Terminal, type `xattr -d -r com.apple.quarantine ` (with the trailing space), then drag the unzipped folder into the Terminal window and press Return. Cloning avoids this entirely — `git` doesn't set the quarantine flag — and `npx` avoids it best of all.
 
-1. Download the zip from [Releases](https://github.com/jasonrundell/back-to-you/releases)
-2. Right-click it and choose **Extract All**
-3. Open the extracted folder and double-click **`install.bat`**
-4. Pick a voice pack when prompted — `claude`, `gigatron`, `jay-run`, or `mistress-of-pain` — or press Enter for `claude`
-5. Restart Claude Code
-
-Uses PowerShell, which is already on your PC. Nothing else to install.
-
-<details>
-<summary>If Windows shows a blue warning screen</summary>
-
-"Windows protected your PC" appears for any script that didn't come from the Microsoft Store. Click **More info**, then **Run anyway**. Nothing is being installed system-wide — the installer only writes into your own `.claude` folder.
+**Windows may show a blue "Windows protected your PC" screen** for any script that didn't come from the Microsoft Store. Click **More info**, then **Run anyway**. Nothing is installed system-wide — the installer only writes into your own `.claude` folder.
 
 </details>
 
 ## Platform support
 
-Both desktop platforms work with nothing extra to install.
+All three desktop platforms, with Node.js the only prerequisite.
 
 | Platform | Works today | How it plays sound |
 | --- | :---: | --- |
-| **Windows 10/11** | Yes | PowerShell, built in |
+| **Windows 10/11** | Yes | PowerShell and `MediaPlayer`, built in |
 | **macOS** | Yes — new, lightly tested | `afplay`, built in |
-| **Linux** | Not yet | Would need `paplay` / `aplay` — PRs welcome |
+| **Linux** | Yes — new, lightly tested | `pw-play`, `paplay`, `mpg123`, `play`, or `aplay` — whichever it finds first |
 
-macOS support is new and hasn't been through many hands yet. If something breaks, [open an issue](https://github.com/jasonrundell/back-to-you/issues) — it's the fastest way to get it fixed.
+On Linux it looks for a player in that order and uses the first one that works. `pw-play` (PipeWire) ships by default on current Ubuntu and Fedora desktops, so usually nothing needs installing. If none is found, the reason is written to `~/.claude/.backtoyou-playback-error` rather than failing silently.
+
+macOS and Linux support are both new and haven't been through many hands yet. If something breaks, [open an issue](https://github.com/jasonrundell/back-to-you/issues) — it's the fastest way to get it fixed.
 
 Also works with **Cowork**, which reads the same hooks.
 
@@ -115,7 +127,7 @@ Also works with **Cowork**, which reads the same hooks.
 
 **Why don't I hear sounds in a cloud session (Claude Code on the web, or a cloud session opened through the desktop app)?**
 
-Hooks run wherever the session itself runs. A local `claude` CLI session runs on your machine, so `afplay` (or PowerShell) can reach your speakers. A cloud session runs inside an isolated remote container instead, with no path to your local audio hardware — the hook command genuinely executes, it just has nothing to play through. Cloud sessions also only load hooks from repository-level (`.claude/settings.json`) and organization-managed settings, not your machine's `~/.claude/settings.json`, so the entries this installer wires wouldn't even be read there.
+Hooks run wherever the session itself runs. A local `claude` CLI session runs on your machine, so `afplay`, `pw-play` or PowerShell can reach your speakers. A cloud session runs inside an isolated remote container instead, with no path to your local audio hardware — the hook command genuinely executes, it just has nothing to play through. Cloud sessions also only load hooks from repository-level (`.claude/settings.json`) and organization-managed settings, not your machine's `~/.claude/settings.json`, so the entries this installer wires wouldn't even be read there.
 
 There's no supported way today to make a cloud session play sound on your local machine — that would need a client-side hook or notification callback from Claude Code itself, which is outside what this repo's scripts can do. If you rely on audio feedback, run Claude Code locally.
 
@@ -130,22 +142,28 @@ There's no supported way today to make a cloud session play sound on your local 
 **All of it?** Delete the installed files and remove the `Back to You` entries from `~/.claude/settings.json`:
 
 ```
-~/.claude/hooks/play-sound.sh      (or .ps1 on Windows)
-~/.claude/hooks/play-category.sh   (or .ps1 on Windows)
+~/.claude/hooks/play-sound.js       (.ps1 on Windows)
+~/.claude/hooks/play-category.js    (.ps1 on Windows)
+~/.claude/hooks/play-lib.js         (macOS and Linux only)
 ~/.claude/sounds/
 ~/.claude/sound-theme.txt
+~/.claude/.backtoyou-version
 ```
 
-Installed before v1? Older builds also left `~/.claude/hooks/play-sound-decision.sh` (or `.ps1`) behind. Running the current installer unwires it for you; the file itself is inert once unwired, and safe to delete.
+**Heard nothing after installing?** Look for `~/.claude/.backtoyou-playback-error`. If it exists, it names the clip and what was tried — an empty folder and a missing audio player look identical from the outside, and this tells them apart. If it doesn't exist, playback isn't the problem; check that `settings.json` still has the hook entries.
+
+Installed before v1? Older builds also left `~/.claude/hooks/play-sound-decision.sh` (or `.ps1`) behind. Upgrading unwires it for you, along with the older `.sh` hooks that macOS and Linux used before the Node rewrite; those files are inert once unwired, and safe to delete.
 
 <details>
 <summary><h2 style="display:inline">How it works</h2></summary>
 
-Claude Code [hooks](https://code.claude.com/docs/en/hooks) let you run a command when something happens. This installs two scripts and points five events at them.
+Claude Code [hooks](https://code.claude.com/docs/en/hooks) let you run a command when something happens. This installs two hook scripts and points five events at them.
+
+The hooks are **Node on macOS and Linux, PowerShell on Windows** — a split that looks odd until you see why. Everything Node buys here is a Unix problem: reading one field out of the hook payload without a JSON parser previously cost `plutil` plus a JavaScript-for-Automation fallback. Windows never had that problem, and it plays audio through a .NET assembly Node can't reach, so a Node hook there would have to launch PowerShell anyway — slower than just being PowerShell. Both implementations classify identically and share the same files in `~/.claude`.
 
 ```
-Stop ──────────→ 🔊 "That's finished."
-Notification ──→ 🔊 "Your call."
+Stop ──────────→ 🔊 "Back to you."
+Notification ──→ 🔊 "Waiting on you."
 ```
 
 | Event | When it fires | What you hear |
@@ -168,7 +186,7 @@ The installer merges these into `~/.claude/settings.json` without touching anyth
 {
   "hooks": {
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "\"~/.claude/hooks/play-sound.sh\"", "timeout": 10 } ] }
+      { "hooks": [ { "type": "command", "command": "node \"~/.claude/hooks/play-sound.js\"", "timeout": 10 } ] }
     ]
   }
 }
@@ -181,10 +199,10 @@ The installer merges these into `~/.claude/settings.json` without touching anyth
 <details>
 <summary><h2 style="display:inline">Make your own theme</h2></summary>
 
-A theme is a folder of sounds. Create `sounds/<name>/` with these subfolders, drop in `.mp3` or `.wav` files, and install it:
+A theme is a folder of sounds. Create it directly in `~/.claude/sounds/`, drop in `.mp3` or `.wav` files, and it's ready:
 
 ```
-sounds/mytheme/
+~/.claude/sounds/mytheme/
 ├── task-complete/
 ├── decision-needed/
 ├── error/
@@ -192,13 +210,14 @@ sounds/mytheme/
 ```
 
 ```bash
-./install.sh mytheme      # macOS
-install.bat mytheme       # Windows
+npx backtoyou mytheme
 ```
 
-Naming a theme on the command line skips the interactive picker — handy for scripting. Leave it off and `mytheme` shows up as a numbered choice alongside the built-in packs.
+Naming a theme on the command line skips the interactive picker — handy for scripting. Leave it off and `mytheme` shows up as a numbered choice alongside the built-in packs, because the picker lists everything in `~/.claude/sounds/` as well as everything shipped.
 
-Every theme on disk gets installed; the active one is named in `~/.claude/sound-theme.txt`. Edit that one line to switch — it takes effect on the next sound, with no reinstall and no restart.
+That's why the folder goes in `~/.claude/sounds/` rather than in a checkout: with `npx` there's no checkout to put it in. Installing or switching packs never deletes it.
+
+The active theme is named in `~/.claude/sound-theme.txt`. Edit that one line to switch by hand if you'd rather — it takes effect on the next sound, with no reinstall and no restart, exactly like re-running the installer.
 
 **Keep `task-complete` clips under about 1.5 seconds.** That folder plays at the end of every response, and anything longer starts to feel like lag.
 
