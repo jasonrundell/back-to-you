@@ -155,9 +155,42 @@ console.log((mine.length === 1 ? "  PASS  " : "  FAIL  ") + "third-party hook un
 console.log((ours.length === 5 ? "  PASS  " : "  FAIL  ") + "five Back to You entries wired (" + ours.length + ")");
 '
 
-# --- 6. the shims ----------------------------------------------------------
+# --- 6. uninstall ----------------------------------------------------------
 
-hdr '6. Shims'
+hdr '6. Uninstall'
+node "$PKG/bin/cli.js" < /dev/null > /dev/null 2>&1   # reinstall after the upgrade test
+mkdir -p "$SB/.claude/sounds/mytheme/task-complete"
+echo mine > "$SB/.claude/sounds/mytheme/task-complete/mine.mp3"
+echo mine > "$SB/.claude/sounds/claude/task-complete/my-take.mp3"
+
+node "$PKG/bin/cli.js" --uninstall < /dev/null > /dev/null 2>&1
+[ $? -ne 0 ] && ok 'refuses without --yes when not a terminal' || bad 'refuses without --yes when not a terminal'
+[ -f "$SB/.claude/sound-theme.txt" ] && ok 'the refusal changed nothing' || bad 'the refusal changed nothing'
+
+node "$PKG/bin/cli.js" --uninstall --yes < /dev/null > "$SB/uninstall.log" 2>&1
+[ $? -eq 0 ] && ok 'uninstall exits 0' || bad 'uninstall exits 0'
+[ -f "$SB/.claude/hooks/play-sound.js" ] && bad 'hooks removed' || ok 'hooks removed'
+[ -f "$SB/.claude/sound-theme.txt" ] && bad 'sound-theme.txt removed' || ok 'sound-theme.txt removed'
+[ -f "$SB/.claude/sounds/mytheme/task-complete/mine.mp3" ] && ok 'a pack you made survives' || bad 'a pack you made survives'
+[ -f "$SB/.claude/sounds/claude/task-complete/my-take.mp3" ] && ok 'a take inside a shipped pack survives' || bad 'a take inside a shipped pack survives'
+[ -f "$SB/.claude/sounds/claude/task-complete/vo-back-to-you.mp3" ] && bad 'shipped clips removed' || ok 'shipped clips removed'
+# Count OUR entries, not all events: the third-party hook seeded in step 5
+# survives on purpose, so an empty `hooks` object would be the wrong bar.
+node -e '
+const fs=require("fs");
+const c=JSON.parse(fs.readFileSync(process.env.HOME+"/.claude/settings.json","utf8").replace(/^﻿/,""));
+const all=Object.values(c.hooks||{}).flatMap(g=>g.flatMap(x=>x.hooks.map(h=>h.command)));
+const ours=all.filter(x=>/play-(sound|category|sound-decision)\.(js|sh|ps1)/.test(x));
+const theirs=all.filter(x=>x.includes("my-own-hook"));
+console.log((ours.length===0?"  PASS  ":"  FAIL  ")+"no Back to You entries left ("+ours.length+")");
+console.log((theirs.length===1?"  PASS  ":"  FAIL  ")+"the third-party hook survived the uninstall");
+'
+node "$PKG/bin/cli.js" --uninstall --yes < /dev/null > /dev/null 2>&1
+[ $? -eq 0 ] && ok 'a second uninstall is a no-op, not an error' || bad 'a second uninstall is a no-op, not an error'
+
+# --- 7. the shims ----------------------------------------------------------
+
+hdr '7. Shims'
 if [ -f "$PKG/install.sh" ]; then
     note 'install.sh is in the tarball (unexpected - it is meant to be clone-only)'
 else

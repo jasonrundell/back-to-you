@@ -52,7 +52,27 @@ function layout(root) {
     // out of sound-theme.txt deliberately: the README documents that file as
     // one bare pack name, and hand-editing it is a supported way to switch.
     versionFile: path.join(base, '.backtoyou-version'),
+
+    // Written by the hooks rather than the installer, but ours all the same,
+    // and so uninstall's business. Enumerated here so there is one list of
+    // what this project puts in ~/.claude rather than two that can drift.
+    markerFile: path.join(base, '.subagent-done-at'),
+    playbackErrorFile: path.join(base, '.backtoyou-playback-error'),
+    // A debug artifact from an August 2026 build. Nothing writes it now, it
+    // carries this project's name, and nothing else will ever clean it up.
+    legacyLogFile: path.join(base, 'back-to-you-hook.log'),
   };
+}
+
+/** Every file this project puts in ~/.claude, settings.json aside. */
+function ownedStateFiles(paths) {
+  return [
+    paths.themeFile,
+    paths.versionFile,
+    paths.markerFile,
+    paths.playbackErrorFile,
+    paths.legacyLogFile,
+  ];
 }
 
 /** Packs shipped in this package. */
@@ -60,4 +80,4 @@ function packageSoundsDir() {
   return path.join(__dirname, '..', 'sounds');
 }
 
-module.exports = { IS_WINDOWS, hookFacts, claudeDir, layout, packageSoundsDir };
+module.exports = { IS_WINDOWS, hookFacts, claudeDir, layout, ownedStateFiles, packageSoundsDir };
