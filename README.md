@@ -232,7 +232,7 @@ Two licenses, and the difference matters:
 
 That split isn't a preference. The clips were generated with ElevenLabs, whose terms forbid offering their output under anything more permissive — which rules out MIT and every Creative Commons license alike.
 
-**If those terms don't suit you, generate your own.** [ELEVENLABS-VOICE-PROMPT.md](ELEVENLABS-VOICE-PROMPT.md) is MIT and holds the complete recipe: the voice design prompt, the model settings, and the exact line for each of the four clips. Run it under your own ElevenLabs account and the audio is yours outright.
+**If those terms don't suit you, generate your own.** [ELEVENLABS-VOICE-PROMPT.md](ELEVENLABS-VOICE-PROMPT.md) is MIT and holds the complete recipe: the voice design prompt, the model settings, and the exact line for each of the three clips. Run it under your own ElevenLabs account and the audio is yours outright.
 
 ## About the sounds
 
