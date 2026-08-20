@@ -32,10 +32,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # NO registry-url here, deliberately. That input makes setup-node write
+      # "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" into a temp
+      # .npmrc. With no token secret - and there is none, by design - that
+      # expands to an empty string, npm reads the line as "auth is already
+      # configured", never starts the OIDC exchange, and publishes with empty
+      # credentials. The registry answers an unauthenticated PUT with a 404,
+      # so the failure reads as "package not found" rather than "not logged
+      # in". That is exactly how the v1.3.0 release failed. The default
+      # registry is registry.npmjs.org anyway, so the input bought nothing.
+      # See actions/setup-node#1551.
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
 
       # Node 22.14 ships npm 10.9.x, which is BELOW the 11.5.1 floor trusted
       # publishing requires. Upgrading explicitly rather than trusting whatever
@@ -44,6 +53,20 @@ jobs:
         run: |
           npm install -g npm@latest
           npm --version
+
+      # The guard for the trap above: if anything puts an auth token back into
+      # the effective npmrc, npm silently skips OIDC and the publish fails
+      # 400 lines later with a misleading 404. Fail here instead, where the
+      # message says what is actually wrong.
+      - name: OIDC must be the only credential
+        run: |
+          NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          if [ -f "$NPMRC" ] && grep -q '_authToken' "$NPMRC"; then
+            echo "::error::$NPMRC configures an auth token; npm will skip the OIDC exchange"
+            grep -n '_authToken' "$NPMRC"
+            exit 1
+          fi
+          echo "ok  no auth token configured in $NPMRC"
 
       - name: Tests
         run: npm test
