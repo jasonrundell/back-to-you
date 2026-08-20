@@ -11,7 +11,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { layout, hookFacts, ownedStateFiles, packageSoundsDir } = require('./paths');
+const { layout, hookFacts, ownedStateFiles, packageSoundsDir, LEGACY_CLIPS } = require('./paths');
 const { unwireSettings, OWNED_SCRIPTS } = require('./settings');
 
 /** Relative paths of every file this package ships under sounds/. */
@@ -82,6 +82,25 @@ function removeFile(p) {
   }
 }
 
+/**
+ * Delete clips an older version shipped and this one does not.
+ *
+ * Installing calls this too: retiring a category means taking its clips off
+ * the machine, not only unwiring the event that played them. Exact relative
+ * paths, so a take the user added to the same folder survives - and the empty
+ * folder goes only if nothing of theirs is left in it.
+ *
+ * @returns {number} how many were there
+ */
+function removeLegacyClips(soundsDir) {
+  let n = 0;
+  for (const rel of LEGACY_CLIPS) {
+    if (removeFile(path.join(soundsDir, rel))) n++;
+  }
+  if (n > 0) pruneEmptyDirs(soundsDir);
+  return n;
+}
+
 /** Is anything of ours actually here? */
 function isInstalled(root) {
   const paths = layout(root);
@@ -120,9 +139,11 @@ function runUninstall({ root, sourceSounds } = {}) {
 
   // --- clips --------------------------------------------------------------
   // Exact relative paths only. A pack the user made survives whole, and so
-  // does a take they added inside a shipped pack.
+  // does a take they added inside a shipped pack. LEGACY_CLIPS covers what
+  // older versions shipped, so uninstalling from a machine that never took
+  // an upgrade still leaves nothing of ours behind.
   let clipCount = 0;
-  for (const rel of shippedClips(sourceSounds)) {
+  for (const rel of [...shippedClips(sourceSounds), ...LEGACY_CLIPS]) {
     if (removeFile(path.join(paths.soundsDir, rel))) clipCount++;
   }
   if (clipCount > 0) removed.push(`${clipCount} clip${clipCount === 1 ? '' : 's'}`);
@@ -165,4 +186,11 @@ function runUninstall({ root, sourceSounds } = {}) {
   };
 }
 
-module.exports = { runUninstall, isInstalled, shippedClips, countFiles, pruneEmptyDirs };
+module.exports = {
+  runUninstall,
+  isInstalled,
+  shippedClips,
+  countFiles,
+  pruneEmptyDirs,
+  removeLegacyClips,
+};

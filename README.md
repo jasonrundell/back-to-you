@@ -43,7 +43,6 @@ Each pack ships one clip per hook today.
 | **A task finishes** | _"Back to you."_ |
 | **Claude needs a decision** | _"Waiting on you."_ |
 | **A turn fails** | _"Hit an error."_ |
-| **A subagent finishes** | _"Subagent's done."_ — a near-whisper, meant to be barely noticed |
 
 The first row plays at the end of **every** response. That is the point, and it is also the thing to know before installing: the clips are kept under a second and a half for exactly this reason.
 
@@ -158,7 +157,7 @@ Installed before v1? Older builds also left `~/.claude/hooks/play-sound-decision
 <details>
 <summary><h2 style="display:inline">How it works</h2></summary>
 
-Claude Code [hooks](https://code.claude.com/docs/en/hooks) let you run a command when something happens. This installs two hook scripts and points five events at them.
+Claude Code [hooks](https://code.claude.com/docs/en/hooks) let you run a command when something happens. This installs two hook scripts and points four events at them.
 
 The hooks are **Node on macOS and Linux, PowerShell on Windows** — a split that looks odd until you see why. Everything Node buys here is a Unix problem: reading one field out of the hook payload without a JSON parser previously cost `plutil` plus a JavaScript-for-Automation fallback. Windows never had that problem, and it plays audio through a .NET assembly Node can't reach, so a Node hook there would have to launch PowerShell anyway — slower than just being PowerShell. Both implementations classify identically and share the same files in `~/.claude`.
 
@@ -172,12 +171,11 @@ Notification ──→ 🔊 "Waiting on you."
 | `Stop` | A response ends | `task-complete`, or `decision-needed` if the response ends in a question |
 | `Notification` | Claude asks for permission or input | `decision-needed` |
 | `PreToolUse` | Claude opens the multiple-choice picker | `decision-needed` |
-| `SubagentStop` | A subagent finishes | `subagent-done` |
 | `StopFailure` | A turn ends on an API error | `error` |
 
 `Notification` is matched to the types that are genuinely a request for input, and `PreToolUse` to `AskUserQuestion` — the picker has no notification type of its own, and would otherwise be the one decision-shaped moment that stays silent. `PostToolUseFailure` is deliberately left alone: it fires on every failed tool call, including a `grep` that finds nothing, and would buzz constantly.
 
-**`SubagentStop` and `Stop` can fire moments apart.** When a subagent is the last thing a turn does, you'd otherwise hear the subagent-done clip and then task-complete right after it — two "done" sounds for one finished task. The `Stop` hook checks for that and skips its own clip when it fires immediately after a subagent-done one. A real question still gets its decision-needed clip either way.
+**`SubagentStop` is deliberately not wired**, and there is no subagent-done clip as of v1.3.0. A subagent finishing isn't a moment that wants you back — the turn is still running — and a turn that fans out to several of them announced every one, which got repetitive fast. The `Stop` clip at the end of the turn already covers it. Upgrading unwires the event and deletes the clip it used to play; a take you added to that folder yourself is kept, as always.
 
 **`SessionStart` is deliberately not wired**, and there is no startup greeting. Earlier versions wired it, matched to `startup` so it wouldn't replay on `/clear` or after a compaction. That wasn't enough: `startup` means every new *session*, not every app launch, and short-lived sessions are common. Measured over a six-hour run it fired about four times an hour and accounted for **69% of every sound heard**, in bursts as tight as four in 43 seconds. It was also the least useful of the set — a session starting is the one moment you're already looking at the terminal, which is exactly what `task-complete` and `decision-needed` are for. Reinstalling removes the hook from an existing install.
 
@@ -206,8 +204,7 @@ A theme is a folder of sounds. Create it directly in `~/.claude/sounds/`, drop i
 ~/.claude/sounds/mytheme/
 ├── task-complete/
 ├── decision-needed/
-├── error/
-└── subagent-done/
+└── error/
 ```
 
 ```bash

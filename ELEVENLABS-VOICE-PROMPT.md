@@ -36,7 +36,7 @@ voices fall apart on one-word lines. Save it as `Claude Code`.
 - Generate **each line as its own generation**, not one block cut up afterwards.
   The pacing stays even that way.
 
-## 3. The 14 clips
+## 3. The 12 clips
 
 Length matters: `hooks/play-sound.ps1` sleeps for the clip's real duration on _every_
 response, so keep `task-complete` and `decision-needed` under ~1.5s. Filenames match
@@ -66,9 +66,13 @@ Flat and factual, never alarmed.
 | --------------------- | ------------------------ |
 | `vo-hit-an-error.mp3` | `[softly] Hit an error.` |
 
-### `subagent-done/` (2)
+### `subagent-done/` — retired, no longer generated
 
-Near-whisper, meant to be barely noticed.
+Dropped in 1.3.0, and `SubagentStop` unwired with it. A subagent finishing is not a
+moment that wants you back — the turn is still running — and a turn that fans out to
+several of them announced every one. Even as a near-whisper it was the most repetitive
+sound in the set, and the `Stop` clip at the end of the turn already covers it. The
+recipe is kept here for anyone who wires the hook themselves:
 
 | File                    | Text to speak               |
 | ----------------------- | --------------------------- |
@@ -101,9 +105,10 @@ install.bat
 ```
 
 The installer only validates `task-complete` and `decision-needed`, so those two must
-be populated. `error` and `subagent-done` are wired and will play as soon as they hold
-a clip; `session-start` is not wired to any hook, so anything left in that folder stays
-silent. See the hook table in `README.md`.
+be populated. `error` is wired and will play as soon as it holds a clip. Neither
+`session-start` nor `subagent-done` is wired to any hook, so anything left in those
+folders stays silent — and installing deletes the `subagent-done` clip this project
+used to ship. See the hook table in `README.md`.
 
 ## 5. Open design question
 

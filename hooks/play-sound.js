@@ -11,8 +11,7 @@
 // Windows keeps PowerShell because it plays through System.Windows.Media
 // .MediaPlayer, a WPF assembly Node cannot reach - see docs/adr/0001.
 
-const fs = require('node:fs');
-const { MARKER, pickClip, play, readPayload } = require('./play-lib');
+const { pickClip, play, readPayload } = require('./play-lib');
 
 /**
  * task-complete, unless the message ends in a question.
@@ -35,37 +34,15 @@ function classify(message) {
   return /\?[^a-zA-Z0-9]*$/.test(message.replace(/\s+$/, '')) ? 'decision-needed' : 'task-complete';
 }
 
-/**
- * Skip a redundant clip right after a subagent finished.
- *
- * When a subagent is the last thing a turn does, SubagentStop's subagent-done
- * clip plays moments before this hook fires - two "done" clips back to back
- * for one completion. play-category timestamps that moment.
- *
- * The marker is single-use either way, and only task-complete is skipped: a
- * real decision-needed question is a distinct request for input, not a
- * duplicate announcement.
- */
-function shouldSkip(category) {
-  let marked = null;
-  try {
-    marked = parseInt(String(fs.readFileSync(MARKER, 'utf8')).replace(/\D/g, ''), 10);
-  } catch {
-    return false;
-  }
-  try {
-    fs.unlinkSync(MARKER);
-  } catch { /* already gone */ }
-
-  if (category !== 'task-complete' || !Number.isFinite(marked)) return false;
-  return Math.floor(Date.now() / 1000) - marked <= 5;
-}
+// This hook used to suppress its own clip when a subagent had just
+// finished: SubagentStop's subagent-done clip landed moments earlier and
+// the two read as one completion. SubagentStop is no longer wired and the
+// category is gone, so there is nothing left to double up with - see the
+// note in src/settings.js.
 
 function main() {
   const payload = readPayload();
   const category = classify(payload.last_assistant_message);
-
-  if (shouldSkip(category)) return;
 
   const clip = pickClip(category);
   if (clip) play(clip);
@@ -82,4 +59,4 @@ if (require.main === module) {
   process.exit(0);
 }
 
-module.exports = { classify, shouldSkip };
+module.exports = { classify };

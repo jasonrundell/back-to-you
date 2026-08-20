@@ -20,7 +20,7 @@ This reverses the project's original stated position, which the README advertise
 - **444 lines of installer tooling were deleted** — `tools/merge-settings.js` (JXA), `tools/merge-settings.ps1`, `tools/lint-json.js` — all of which existed only to work around the absence of a JSON parser at install time.
 - **macOS and Linux pay ~40–110 ms per response** in Node startup, against a hook that already blocks 1.0–1.5 s waiting for the clip to finish.
 - **Windows keeps its ~1.2 s of hook overhead.** Reducing it needs a Node-reachable Windows player — a native module or a bundled binary — and is out of scope for the npm effort.
-- **The classification logic now exists in two languages** and must stay byte-identical. Both implementations also read and write `~/.claude/.subagent-done-at`, so its format is a compatibility surface: a user can switch platforms against one `~/.claude`.
+- **The classification logic now exists in two languages** and must stay byte-identical. Both implementations share one `~/.claude`, so anything either writes there is a compatibility surface: a user can switch platforms against it. Up to 1.2.0 that included `.subagent-done-at`, written by whichever platform's hook fired; `SubagentStop` is unwired as of 1.3.0 and nothing writes it now.
 
 ## Provenance
 

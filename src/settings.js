@@ -11,21 +11,30 @@
 // every event, then write the current plan back. That is what lets an upgrade
 // correct an entry an older version got wrong - a stale path, a missing
 // timeout, a matcher that was too broad. An earlier version skipped any event
-// that already had an entry, so none of those could ever be fixed.
+// that already had an entry, so none of those could ever be fixed. It is also
+// what retires an event outright: SubagentStop was wired up to 1.2.0, and an
+// upgrade unwires it with nothing asked of the user.
 
 const fs = require('node:fs');
 const path = require('node:path');
 
 /**
- * The five wired events.
+ * The four wired events.
  *
  * SessionStart is deliberately NOT wired. Matched even to `startup` alone it
  * fired ~4x an hour in real use and accounted for 69% of all sounds heard
  * over a measured six-hour run.
  *
+ * SubagentStop is NOT wired either, as of 1.3.0, and there is no
+ * subagent-done category any more. A subagent finishing is not a moment that
+ * wants you back - the turn is still running - and a turn that fans out to
+ * several of them announced every one. Repetitive enough to be a reason to
+ * turn the whole thing off, which costs the events that do earn their sound.
+ * The Stop clip at the end of the turn already covers it.
+ *
  * Notification is matched to the types that are genuinely a request for
- * input; unmatched it also fires on auth_success and on agent_completed,
- * which SubagentStop already owns.
+ * input; unmatched it also fires on auth_success, and on agent_completed -
+ * the same subagent announcement by another route, out for the same reason.
  *
  * PreToolUse/AskUserQuestion covers the multiple-choice picker, which has no
  * notification type of its own and would otherwise be the one decision-shaped
@@ -47,7 +56,6 @@ function hookPlan(hooksDir, facts) {
       command: category('decision-needed'),
     },
     { event: 'PreToolUse', matcher: 'AskUserQuestion', command: category('decision-needed') },
-    { event: 'SubagentStop', matcher: null, command: category('subagent-done') },
     { event: 'StopFailure', matcher: null, command: category('error') },
   ];
 }

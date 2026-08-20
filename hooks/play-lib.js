@@ -15,7 +15,6 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
-const MARKER = path.join(CLAUDE_DIR, '.subagent-done-at');
 const ERROR_FILE = path.join(CLAUDE_DIR, '.backtoyou-playback-error');
 
 // A user can drop a three-minute file into a pack folder, and this runs at the
@@ -147,8 +146,8 @@ function readPayload() {
  * Drain stdin without parsing it.
  *
  * Claude Code writes JSON to this process's stdin; leaving it unread risks
- * blocking the writer once a payload outgrows the pipe buffer, and the larger
- * events wired here - PreToolUse, SubagentStop - are the ones that can.
+ * blocking the writer once a payload outgrows the pipe buffer, and PreToolUse
+ * - the largest payload wired here - is the one that can.
  */
 function drainStdin() {
   if (process.stdin.isTTY) return;
@@ -159,7 +158,6 @@ function drainStdin() {
 
 module.exports = {
   CLAUDE_DIR,
-  MARKER,
   ERROR_FILE,
   PLAYERS,
   activeTheme,
