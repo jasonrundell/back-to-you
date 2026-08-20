@@ -19,7 +19,7 @@ Four voice packs ship (`claude`, `gigatron`, `jay-run`, `mistress-of-pain`), one
 - Accepts both `.mp3` and `.wav`, and picks at random among however many clips a category folder holds.
 - Rewrites its own `settings.json` entries on every install rather than merging into them, so an upgrade corrects a stale path, a missing timeout, or a matcher an earlier release got wrong. Hooks belonging to the user are untouched.
 - Uninstalls with `npx backtoyou --uninstall`, matching what it ships file by file so nothing the user made is deleted.
-- Writes the reason to `~/.claude/.backtoyou-playback-error` when playback fails on Unix, rather than falling silent.
+- Writes the reason to `~/.claude/.backtoyou-playback-error` when playback fails on either platform, rather than falling silent.
 
 ## Supported Platforms
 
@@ -138,7 +138,7 @@ Windows installs the `.ps1` hooks, macOS and Linux the `.js` ones. Everything el
 ├── settings.json.bak.<timestamp>   # written before every merge and every uninstall
 ├── sound-theme.txt                 # one line naming the active pack
 ├── .backtoyou-version              # what installed, for the fresh/upgrade decision
-├── .backtoyou-playback-error       # written only when Unix playback fails
+├── .backtoyou-playback-error       # written only when playback fails, either platform
 └── sounds/
     ├── claude/                     # task-complete/  decision-needed/  error/
     ├── gigatron/
@@ -152,6 +152,10 @@ The version marker is a dotfile rather than a second line in `sound-theme.txt`, 
 Hooks are installed at the user level, so the sounds apply to every Claude Code and Cowork session for that user. Because installing copies without deleting, a pack left over from an earlier version stays on disk until removed by hand or by `--uninstall`.
 
 ## File Responsibilities
+
+### `README.md`
+
+User-facing pitch, installation, platform support, uninstall, and theming documentation. It is also what npm renders on the package page, which is why its image URLs are absolute.
 
 ### `bin/cli.js`
 
@@ -207,7 +211,7 @@ Shared by both Unix hooks: the active pack, random clip selection, playback, and
 
 The old `.sh` hooks duplicated this logic on purpose — a third file for the installer to keep in step, and the cost of a second process on a path that runs at the end of every response. The second reason does not survive the move to Node (`require` is in-process), and the first is worth paying once to avoid two copies of a five-player probe chain drifting apart.
 
-Playback blocks until the clip ends, which is how `afplay`, `pw-play` and `paplay` all behave natively; `spawnSync`'s timeout gives the six-second watchdog for free. A watchdog kill counts as success, because it means the clip *was* playing. When every candidate is missing or fails, the reason is written to `~/.claude/.backtoyou-playback-error` — overwritten rather than appended, since a broken setup would grow that file without bound.
+Playback blocks until the clip ends, which is how `afplay`, `pw-play` and `paplay` all behave natively; `spawnSync`'s timeout gives the six-second watchdog for free. A watchdog kill counts as success, because it means the clip *was* playing. When every candidate is missing or fails, `noteFailure()` writes the reason to `~/.claude/.backtoyou-playback-error` — overwritten rather than appended, since a broken setup would grow that file without bound. The PowerShell hooks write the same one-line file, so a mute install is diagnosable the same way on either platform.
 
 ### `hooks/play-sound.js` and `hooks/play-sound.ps1`
 
@@ -234,11 +238,13 @@ Both drain standard input without parsing it. Claude Code writes JSON to the hoo
 
 All four hook scripts exit quietly — and with status 0 — on every path, including every error path. A non-zero exit surfaces a hook error in the transcript, which a missing sound file does not warrant, and on `PreToolUse` it does considerably worse than that (see below).
 
-### Why only Windows waits for the clip duration
+### Why only Windows waits for the clip duration, and why it pumps a dispatcher to do it
 
-The PowerShell hooks poll `NaturalDuration` before sleeping. That exists **only** because .NET's `MediaPlayer.Play()` is asynchronous — without it the script would exit before the sound finished.
+The PowerShell hooks wait for `NaturalDuration` to resolve before sleeping out the clip. That exists **only** because .NET's `MediaPlayer.Play()` is asynchronous — without it the script would exit before the sound finished.
 
-The Unix players all block until the clip ends, so the Node hooks need none of that machinery. The asymmetry is correct and should not be "fixed". Both platforms cap playback at roughly six seconds, because a user can drop a three-minute file into a pack folder and this runs at the end of every response.
+The waiting is not a plain `Start-Sleep`, though. `MediaPlayer` marshals its events — the duration becoming known, and `MediaFailed` — through the calling thread's `Dispatcher`, and a plain script host never pumps one. Verified experimentally: without pumping, `NaturalDuration` never resolves and `MediaFailed` never fires, which is why every Windows playback failure used to vanish silently. `Wait-Dispatcher` pushes a `DispatcherFrame` for the duration of each wait instead, and both work. Audio rendering never needed any of this — the underlying media session plays independently of the callback — which is exactly why the bug presented as no error and no sound.
+
+The Unix players all block until the clip ends, so the Node hooks need none of that machinery. The asymmetry is correct and should not be "fixed". Both platforms cap playback at roughly six seconds, because a user can drop a three-minute file into a pack folder and this runs at the end of every response — and both write `~/.claude/.backtoyou-playback-error` when playback fails: an `Add-Type` failure, a `MediaFailed` event or any other exception on Windows, an exhausted player chain on Unix.
 
 ### `install.sh`, `install.bat`, `install.command`
 
@@ -254,8 +260,11 @@ Publishes to npm and attaches the download zip, from one published GitHub Releas
 
 Auth is npm **trusted publishing (OIDC)** — no `NPM_TOKEN` to leak or rotate. The trusted publisher is configured against this repository *and this filename*; renaming `release.yml` breaks publishing until the npm setting is updated to match.
 
-Three checks guard mistakes that have already happened once:
+**`setup-node` must not be given `registry-url`.** That input writes an `_authToken` line into a temporary `.npmrc`; with no token secret — and there is none, by design — it expands to an empty string, npm reads the line as "auth is already configured", never starts the OIDC exchange, and publishes with empty credentials. The registry answers an unauthenticated `PUT` with a 404, so the failure reads as "package not found" rather than "not logged in". That is exactly how the v1.3.0 release failed. A `workflow_dispatch`-only step decodes and prints the `repository` and `workflow_ref` claims the OIDC token would present, because npm reports every trusted-publishing failure as a bare `ENEEDAUTH` or 404 with no diagnostics at all.
 
+Four checks guard mistakes that have already happened once:
+
+- **No auth token may reach the effective npmrc.** If anything puts one back, npm silently skips OIDC and the publish fails hundreds of lines later with that misleading 404. This fails early instead, where the message says what is actually wrong.
 - **The tag must match `package.json`.** A published version can never be replaced, only superseded.
 - **`LICENSE-AUDIO` and `NOTICE` must be in the tarball.** They are exactly the files `npm-packlist` drops once a `files` allowlist exists — `LICENSE` is force-included by its always-ship glob, but `-AUDIO` is a filename suffix rather than an extension, and `NOTICE` was never in that set. Shipping the mp3s without their terms would breach `LICENSE-AUDIO` condition 5, silently.
 - **The zip must use forward slashes.** The v1.1.1 zip stored 26 of 33 entries with backslashes, so macOS extracted it as a flat pile of files literally named `hooks\play-sound.sh`. It went unnoticed across three releases because nothing checked.
@@ -265,8 +274,6 @@ Three checks guard mistakes that have already happened once:
 `ELEVENLABS-VOICE-PROMPT.md` is the full recipe for the `claude` pack: the Voice Design prompt, the ElevenLabs model and settings, the exact line spoken by each clip, and the post-export trimming and normalization notes. It also keeps the retired `subagent-done` and `session-start` recipes, for anyone who wants to wire those events themselves. It is MIT-licensed on purpose — the audio is not, so the recipe is the escape hatch for anyone the audio terms do not suit.
 
 The per-pack `elevenlabs-prompt.md` files hold just the voice description for that pack. `CLAUDE.md` caps those descriptions at **500 characters**, which is an ElevenLabs limit; check with `wc -c` before committing one. `jay-run` has no prompt checked in yet.
-
-> Both are currently out of step with the audio: `ELEVENLABS-VOICE-PROMPT.md` still heads its sections `task-complete/ (5)`, `decision-needed/ (4)` and `error/ (3)`, and names `vo-waiting.mp3` where the file shipped is `vo-waiting-on-you.mp3`. The tables below those headings list one clip each, which is correct.
 
 ## Wired Hook Events
 
