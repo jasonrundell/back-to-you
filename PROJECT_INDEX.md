@@ -2,33 +2,33 @@
 
 ## Overview
 
-This project installs voice sound notifications for Claude Code and Cowork on **Windows and macOS**. It copies hook scripts and sound assets into the user's Claude directory, then adds Claude hook entries to that directory's `settings.json`.
+This project installs voice sound notifications for Claude Code and Cowork on **Windows, macOS, and Linux**. It ships as an npm package (`backtoyou`) run via `npx backtoyou`: a Node CLI copies hook scripts and sound packs into `~/.claude`, then merges Claude hook entries into `~/.claude/settings.json`.
 
-Each platform has its own installer and its own pair of hook scripts — `install.bat` with PowerShell on Windows, `install.sh` with POSIX `sh` on macOS. They mirror each other step for step and produce identical results; where they differ, the difference is documented and deliberate.
+There is exactly one installer implementation, `bin/cli.js` plus `src/`. `install.sh` and `install.bat` are three-line shims that `exec`/call it from a clone or an unzipped release — see [`docs/adr/0001-node-as-a-hard-requirement.md`](docs/adr/0001-node-as-a-hard-requirement.md) for why Node became a hard requirement and the old dual-implementation shell installers were retired.
 
-The shipped `claude` theme is 15 voice-over MP3 clips generated in ElevenLabs from a persona written to sound like the embodiment of Claude Code — calm, precise, understated. `ELEVENLABS-VOICE-PROMPT.md` holds the voice design prompt, generation settings, and the script for every line, so the pack can be regenerated or re-voiced without redesigning it.
+The hook *scripts* still split by platform: Node (`hooks/*.js`) on macOS and Linux, PowerShell (`hooks/*.ps1`) on Windows. That split survives the Node consolidation because Windows plays audio through `System.Windows.Media.MediaPlayer`, a WPF assembly Node cannot reach — see the same ADR.
+
+Each shipped voice pack is 3 voice-over MP3 clips generated in ElevenLabs — one each for `task-complete`, `decision-needed`, and `error`. `ELEVENLABS-VOICE-PROMPT.md` and each pack's `elevenlabs-prompt.md` hold the voice design prompt and generation notes so a pack can be regenerated or re-voiced.
 
 ## Feature Capabilities
 
-- Plays randomized clips for task completion and decision-needed events.
-- Supports Claude Code and Cowork through Claude `Stop` and `Notification` hooks.
-- Detects question-like assistant messages in the `Stop` hook payload and plays a decision-needed clip instead of the task-complete clip.
-- Supports arbitrary user-supplied themes: any folder under `sounds/` is installed, and the active one is named in `%USERPROFILE%\.claude\sound-theme.txt`.
-- Waits for each clip's real duration instead of a fixed delay, so short clips do not stall the hook.
-- Accepts both `.mp3` and `.wav` in any theme folder.
-- Merges hook entries into existing Claude settings instead of replacing unrelated hooks.
+- Plays a random clip from the active pack for task completion, decision-needed, and error events.
+- Supports Claude Code and Cowork through Claude `Stop`, `Notification`, `PreToolUse`, and `StopFailure` hooks.
+- Detects question-like assistant messages in the `Stop` hook payload and plays the decision-needed clip instead of task-complete.
+- Ships four voice packs (`claude`, `gigatron`, `jay-run`, `mistress-of-pain`) and supports arbitrary user-supplied packs dropped into `~/.claude/sounds/`; the active one is named in `~/.claude/sound-theme.txt`.
+- Switching packs rewrites one line in `sound-theme.txt` — no reinstall, no restart.
+- Waits for each clip's real duration instead of a fixed delay (Windows), or blocks natively on the player (Unix), so short clips do not stall the hook, capped at 6 seconds.
+- Accepts both `.mp3` and `.wav` in any pack folder.
+- Rewrites (not merges) its own hook entries into existing Claude settings on every install, so an upgrade corrects a stale path or a wrong matcher, while leaving the user's other hooks untouched.
+- Ships a CLI uninstaller (`npx backtoyou --uninstall`) that removes exactly what this package installed and nothing the user added.
 
 ## Supported Platforms
 
-- **Windows: Supported.** `install.bat` plus PowerShell hook scripts using the .NET `PresentationCore` media APIs.
-- **macOS: Supported.** `install.sh` plus POSIX `sh` hook scripts using `afplay`. Depends on nothing beyond a stock macOS — no Homebrew, no `jq`, no `python3`.
-- Linux: Not supported. The macOS shell scripts are close to portable, but audio playback would need `paplay`, `aplay`, or `mpg123` instead of `afplay`, and the settings merge would need a replacement for `osascript`.
+- **Windows 10/11: Supported.** PowerShell hook scripts using the .NET `PresentationCore` / `System.Windows.Media.MediaPlayer` APIs.
+- **macOS: Supported.** Node hook scripts using `afplay`, which ships with the OS.
+- **Linux: Supported.** Node hook scripts probe `pw-play`, `paplay`, `mpg123`, `play`, or `aplay`, in that order, and use the first one found. See the probe-order and format-gate notes in `hooks/play-lib.js`.
 
-### Why macOS avoids `python3` and `jq`
-
-Neither ships with macOS. `python3` comes with the **Command Line Tools**, not the operating system, so on a Mac that has never had Xcode installed `/usr/bin/python3` is a trampoline that pops a GUI dialog prompting for a developer-tools install. That fails for precisely the non-technical users this project targets while working perfectly on every developer's machine — the worst kind of bug to ship. `jq` is never present at all.
-
-The settings merge therefore runs through `osascript -l JavaScript` (JXA), which is stock. See `tools/merge-settings.js` for why it is preferred over `plutil`.
+All three platforms require **Node.js ≥ 18** — both to run the installer and, on macOS/Linux, at hook runtime. This is a deliberate hard requirement (`docs/adr/0001`), not an oversight; there is no dependency-free fallback path anymore.
 
 ## Repository Structure
 
@@ -36,162 +36,170 @@ The settings merge therefore runs through `osascript -l JavaScript` (JXA), which
 .
 ├── README.md
 ├── PROJECT_INDEX.md
-├── ELEVENLABS-VOICE-PROMPT.md  # persona prompt + per-clip script
-├── .gitattributes              # .bat/.ps1 -> CRLF, .sh/.command/.js -> LF, audio binary
-├── install.bat                 # Windows installer, optional theme name
-├── install.sh                  # macOS installer, optional theme name
-├── install.command             # Finder wrapper around install.sh
+├── CLAUDE.md
+├── ELEVENLABS-VOICE-PROMPT.md   # persona prompt + per-clip script, MIT
+├── LICENSE                      # code: MIT
+├── LICENSE-AUDIO                # sounds/: non-commercial, ElevenLabs terms
+├── NOTICE
+├── package.json                 # bin: backtoyou -> bin/cli.js
+├── .gitattributes                # .bat/.ps1 -> CRLF, .sh/.command/.js -> LF, audio binary
+├── .github/workflows/release.yml # npm publish via OIDC trusted publishing, on GitHub Release
+├── install.bat                  # Windows shim, execs bin/cli.js
+├── install.sh                   # macOS/Linux shim, execs bin/cli.js
+├── install.command              # Finder double-click wrapper around install.sh
+├── bin/
+│   └── cli.js                   # the actual installer/uninstaller CLI entry point
+├── src/
+│   ├── paths.js                 # ~/.claude layout, per-platform hook facts, legacy-clip list
+│   ├── plan.js                  # pure decision logic: which pack, fresh/upgrade/switch/same
+│   ├── settings.js               # settings.json read/merge/write, hook-entry ownership
+│   ├── install.js                # all install-time disk effects
+│   └── uninstall.js              # all uninstall-time disk effects
 ├── assets/
-│   ├── banner-light.svg        # README hero, light theme
-│   ├── banner-dark.svg         # README hero, dark theme
-│   └── README-fragment.md      # the <picture> block and its rationale
+│   ├── banner-light.svg / banner-dark.svg  # README hero
+│   ├── demo.svg
+│   └── README-fragment.md
+├── docs/
+│   ├── adr/
+│   │   └── 0001-node-as-a-hard-requirement.md
+│   └── agents/
+│       ├── domain.md            # how agent skills should read this repo's domain docs
+│       └── issue-tracker.md     # issues live in GitHub Issues, via `gh`
 ├── hooks/
-│   ├── play-sound.ps1              # Windows Stop
-│   ├── play-category.ps1           # Windows, all fixed-category events
-│   ├── play-sound.sh               # macOS Stop
-│   └── play-category.sh            # macOS, all fixed-category events
-├── tools/
-│   ├── merge-settings.ps1      # Windows settings merge, run by install.bat
-│   ├── merge-settings.js       # macOS JXA settings merge, run by install.sh
-│   └── lint-json.js            # macOS JXA settings.json validation, run by install.sh
+│   ├── play-lib.js              # shared by both Node hooks: player probe chain, clip picking
+│   ├── play-sound.js            # Unix Stop hook
+│   ├── play-category.js         # Unix, all fixed-category events
+│   ├── play-sound.ps1           # Windows Stop hook
+│   └── play-category.ps1        # Windows, all fixed-category events
 ├── sounds/
-│   └── claude/                 # 13 voice-over MP3s, 12 of them wired
-│       ├── task-complete/          # 5
-│       ├── decision-needed/        # 4
-│       ├── error/                  # 3
-│       └── session-start/          # 1, unwired - nothing reads this folder
+│   ├── claude/                  # default pack
+│   ├── gigatron/
+│   ├── jay-run/
+│   ├── mistress-of-pain/
+│   └── <pack>/
+│       ├── elevenlabs-prompt.md
+│       ├── task-complete/       # 1 clip
+│       ├── decision-needed/     # 1 clip
+│       └── error/               # 1 clip
 └── tests/
-    ├── Test-TaskCompleteRandomness.ps1  # Windows clip distribution
-    ├── test-clip-selection.sh           # shell clip distribution
-    ├── test-classification.sh           # Stop hook question detection
-    ├── test-merge-settings.js           # macOS settings merge (needs node)
-    └── test-lint-json.js                # macOS settings.json validation (needs node)
+    ├── installer.test.js            # node:assert suite for src/ and hooks/play-lib.js logic
+    ├── Test-TaskCompleteRandomness.ps1  # Windows clip-distribution sampling harness
+    └── verify-macos.sh              # manual macOS tarball verification harness (not shipped)
 ```
+
+`session-start/` and `subagent-done/` pack folders and their hook wiring are retired as of 1.3.0 — see "Wired Hook Events" below.
 
 ## Runtime Flow
 
-Both installers follow the same sequence. `$CLAUDE` below is `%USERPROFILE%\.claude` on Windows and `~/.claude` on macOS.
+`$CLAUDE` below is `%USERPROFILE%\.claude` on Windows and `~/.claude` on macOS/Linux.
 
-1. The user runs `install.bat` (Windows) or `install.sh` / `install.command` (macOS), optionally passing a theme name. Without one, and when run interactively, the installer lists the packs found under `sounds/` and prompts for a choice (default `claude`); non-interactive runs (e.g. piped) default straight to `claude`.
-2. The installer verifies a matching folder exists under `sounds/` and that its `task-complete` and `decision-needed` folders are non-empty, listing the available themes if not. The macOS installer additionally checks that `afplay`, `osascript`, and `plutil` are present.
-3. The installer creates the hook and sound directories under `$CLAUDE`.
-4. The installer copies hook scripts from `hooks/` and the entire `sounds/` tree, so every theme present is installed. macOS then makes the hook scripts executable.
-5. The installer writes the chosen theme name to `$CLAUDE/sound-theme.txt`.
-6. The installer creates or updates `$CLAUDE/settings.json` with the four wired hook commands. It strips every entry pointing at this project's own scripts — current or from an older version — then writes the current plan back, so an upgrade corrects a stale path, a missing timeout, or a matcher an earlier release got wrong. Hooks belonging to the user are untouched. Both platforms back the existing file up to `settings.json.bak.<timestamp>` and validate before and after; on failure the backup is restored.
-7. Claude Code or Cowork runs the configured hooks. Each script reads the theme file, then plays a random clip from `sounds/<theme>/<category>/`.
+1. The user runs `npx backtoyou [pack]`, or `install.sh` / `install.bat` / `install.command`, which shim straight into `bin/cli.js`. With no pack argument and a real terminal, the CLI lists every pack found in the package plus any already under `$CLAUDE/sounds/` and prompts for a choice (default: the active pack if installed, else `claude`). A non-interactive run (piped, CI) keeps the active pack on a re-run, or installs `claude` on a fresh one.
+2. `src/plan.js` classifies the run as `fresh`, `upgrade`, `switch`, or `same` by comparing the requested pack and this package's version against `$CLAUDE/.backtoyou-version` and `sound-theme.txt`. Only `fresh` and `upgrade` take the full install path.
+3. `src/install.js#checkPack` verifies the chosen pack exists and its `task-complete` and `decision-needed` folders are non-empty.
+4. **Full install** (`fresh`/`upgrade`): `runFullInstall` creates `$CLAUDE/hooks` and `$CLAUDE/sounds`, copies every pack from the package into `$CLAUDE/sounds` (so a user's custom pack is never touched), copies this platform's hook scripts, removes any clips a retired category used to ship, backs up `settings.json` to `settings.json.bak.<timestamp>`, and rewrites the four hook entries via `src/settings.js#mergeSettings` — stripping every entry this project has ever owned first, so an upgrade corrects a stale path or matcher rather than leaving it. On failure the backup is restored.
+5. **Switch** (`switch`): only `sound-theme.txt` is rewritten. No files are copied, no restart is needed — the hooks read the theme file on every fire.
+6. **Same**: no-op.
+7. Claude Code or Cowork runs the configured hooks. Each hook reads the theme file, then plays a random clip from `$CLAUDE/sounds/<theme>/<category>/`.
+
+Uninstalling (`npx backtoyou --uninstall`) is the mirror image, in `src/uninstall.js`: it removes every hook script and state file this project has ever installed, deletes only the exact clip files this package ships (by relative path, so a user's own take or pack survives), backs up and unwires `settings.json`, and reports what it kept.
 
 ## Installed Locations
 
-Windows installs `.ps1` hooks, macOS installs `.sh` hooks; the rest of the tree is identical.
+Windows installs `.ps1` hooks, macOS/Linux install `.js` hooks; the rest of the tree is identical.
 
 ```text
-%USERPROFILE%\.claude\   (Windows)   |   ~/.claude/   (macOS)
+%USERPROFILE%\.claude\   (Windows)   |   ~/.claude/   (macOS/Linux)
 ├── hooks\
-│   ├── play-sound.ps1       |  play-sound.sh
-│   └── play-category.ps1        |  play-category.sh
+│   ├── play-sound.ps1       |  play-sound.js
+│   ├── play-category.ps1    |  play-category.js
+│   └──                      |  play-lib.js        (Unix only, required, never invoked directly)
 ├── settings.json
-├── settings.json.bak.<timestamp>   # written before each merge, both platforms
-├── sound-theme.txt        # one line naming the active theme
+├── settings.json.bak.<timestamp>      # written before each merge, both platforms
+├── sound-theme.txt                    # one line naming the active pack
+├── .backtoyou-version                 # the installed package version
+├── .backtoyou-playback-error          # written only when a hook fails to find a working player
 └── sounds\
-    └── claude\
+    ├── claude\
+    ├── gigatron\
+    ├── jay-run\
+    ├── mistress-of-pain\
+    └── <any custom pack>\
         ├── task-complete\
         ├── decision-needed\
-        ├── error\
-        └── session-start\      # installed but unwired; no hook reads it
+        └── error\
 ```
 
-Hooks are installed at the user level, so the sounds apply to every Claude Code and Cowork session for the current Windows user.
-
-Themes live in separate folders, so installing one never deletes sounds the user added to another. Switching themes needs no reinstall and no Claude restart, because the hook reads `sound-theme.txt` on each invocation. Both hook scripts fall back to `claude` when that file is missing or empty.
-
-Because the installer never deletes installed themes, a `chiptune` folder left over from an earlier version stays on disk until removed by hand. This is not currently documented in `README.md`.
+Hooks are installed at the user level, so the sounds apply to every Claude Code and Cowork session for the current user. Packs live in separate folders, so installing or switching never deletes a pack the user added, and the installer never deletes a pack it did not ship.
 
 ## File Responsibilities
 
 ### `README.md`
 
-User-facing pitch, installation, uninstall, and theming documentation.
+User-facing pitch, installation, uninstall, platform support, and theming documentation.
 
-### `ELEVENLABS-VOICE-PROMPT.md`
+### `ELEVENLABS-VOICE-PROMPT.md` / `sounds/<pack>/elevenlabs-prompt.md`
 
-The source of truth for the `claude` theme: voice design prompt, ElevenLabs model and settings, the exact line spoken by each clip, and post-export trimming and normalization notes. Update it alongside any change to the shipped audio.
+Source of truth for each pack's voice: design prompt, ElevenLabs model and settings, and the exact line spoken by each clip. Prompts must stay **500 characters or fewer** — see `CLAUDE.md`.
 
-### `install.bat`
+### `bin/cli.js`
 
-Windows installer that:
+The installer/uninstaller entry point (`npx backtoyou`). Parses `--help`, `--version`, `--uninstall`, `--yes`, and an optional pack-name argument; runs the interactive picker when appropriate; and calls into `src/plan.js`, `src/install.js`, and `src/uninstall.js` to do the actual work. Zero runtime dependencies, deliberately — `install.sh`/`install.bat` exec this file directly from a clone with no `npm install` first.
 
-- Resolves the theme argument, defaulting to `claude`, and validates that the theme folder exists and is populated.
-- Creates Claude hook and sound directories.
-- Copies the whole `sounds/` tree into the Claude sound folder.
-- Writes the active theme to `sound-theme.txt`.
-- Copies PowerShell hook scripts into the Claude hook folder.
-- Creates or updates Claude `settings.json` `Stop` and `Notification` hook entries, building the JSON with `ConvertTo-Json` so Windows paths are escaped correctly.
+### `src/paths.js`
 
-### `install.sh`
+Where everything lives under `~/.claude`, and the per-platform `hookFacts()` (which script names, which support files, how `settings.json` invokes them). Also holds `LEGACY_CLIPS`, the list of clip paths a retired category used to ship, so upgrading removes them.
 
-macOS installer. Mirrors `install.bat` step for step, with two differences that matter:
+### `src/plan.js`
 
-- **It backs up `settings.json` before touching it**, validates with `tools/lint-json.js` (JXA `JSON.parse`) before and after the merge, and restores the backup if either check fails. It also treats "absent" and "unparseable" as distinct cases, refusing to overwrite a malformed file rather than replacing it. An earlier version validated with `plutil -lint`, which rejected at least one real, well-formed `settings.json` — plutil round-trips JSON through the plist type system to validate it, and that round-trip can fail JSON that `JSON.parse` accepts outright.
-- **It `chmod +x` the installed hook scripts.** Without that the hooks are a silent no-op — nothing errors, there is simply never any sound.
+Pure decision logic, no I/O: classifies a run as `fresh`/`upgrade`/`switch`/`same`, resolves which pack a run should activate (argument, interactive pick, or non-interactive default), and decides what a run should actually do (`planEffects`).
 
-### `install.command`
+### `src/settings.js`
 
-Three-line Finder wrapper so the installer can be double-clicked. Runs `install.sh`, then waits for Return so the output is readable before the Terminal window closes. Committed mode `755`.
+Reads, merges, and atomically writes `~/.claude/settings.json`. `mergeSettings` strips every hook entry this project has ever owned (`OWNED_SCRIPTS`, covering current and retired script names on both platforms) and writes the current four-event plan back — a rewrite, not a merge, so an upgrade can fix a wrong matcher or timeout. Handles a UTF-8 BOM (written by PowerShell 5.1) by stripping it to parse and restoring it on write.
 
-### `tools/merge-settings.ps1`
+### `src/install.js`
 
-The Windows settings merge, run by `install.bat`. Backs up, merges the five hook entries, writes, then reads the result back and reparses it to prove the file still loads — restoring the backup if it does not.
+All install-time disk effects: enumerating available packs, checking a pack is usable, copying packs and hooks, backing up and merging settings, writing the theme file, and removing legacy clips.
 
-It lives in its own file rather than inside `install.bat` because five entries, two carrying matchers, do not fit legibly into a batch one-liner continued with carets. The previous inline version handled two entries and was already near the limit of readability.
+### `src/uninstall.js`
 
-### `tools/merge-settings.js`
+All uninstall-time disk effects, matching `src/install.js` file-for-file so the two never drift. Deletes only exact relative clip paths this package ships (plus `LEGACY_CLIPS`), so a user's own pack or an added take inside a shipped pack's folder always survives.
 
-The macOS settings merge, run by `install.sh` via `osascript -l JavaScript`. Scans `hooks.Stop` and `hooks.Notification` for an entry already naming our scripts, appends one if absent, and writes atomically.
+### `install.sh` / `install.bat` / `install.command`
 
-JXA rather than `plutil` because this is the user's own config file: `plutil` round-trips JSON through the plist type system, which has no `null`, sorts keys, and can coerce types. `JSON.parse`/`JSON.stringify` is an identity transform for everything it does not deliberately touch.
+Three-line shims. `install.sh`/`install.bat` verify `node` is on `PATH` and `exec`/call `bin/cli.js "$@"`. `install.command` is a Finder double-click wrapper that runs `install.sh` and waits for Return so the output is readable before the window closes. Committed mode `755`.
 
-### `tools/lint-json.js`
+### `hooks/play-lib.js`
 
-Validates `settings.json` before and after the merge, run by `install.sh` via `osascript -l JavaScript`. Empty or absent content is treated as valid; anything else must parse as a JSON object. Used in place of `plutil -lint`, which validates by round-tripping through the plist type system and can reject well-formed JSON that round-trip does not like — linting with the same `JSON.parse` the merge itself uses means a pass here is a guarantee the merge will parse the file too.
+Shared by both Unix hooks: the player probe chain (`afplay` on macOS; `pw-play`, `paplay`, `mpg123`, `play`, `aplay` in order on Linux, with format gates because `aplay` on an mp3 plays static and `mpg123` cannot play wav), active-theme reading, random clip picking, blocking playback with a 6-second watchdog, and writing `.backtoyou-playback-error` on failure so a broken install is diagnosable rather than silently mute.
 
-### `hooks/play-sound.ps1` and `hooks/play-sound.sh`
+### `hooks/play-sound.js` and `hooks/play-sound.ps1`
 
-Claude `Stop` hook. Reads the hook payload from standard input, checks whether `last_assistant_message` ends with a question, resolves the active theme, then plays either a decision-needed or a task-complete clip.
+Claude `Stop` hook. Reads the hook payload from stdin, classifies `task-complete` vs `decision-needed` by whether the last assistant message ends in a question, then plays the matching category. Both implementations must classify identically; each is covered by `tests/installer.test.js`'s classification tests.
 
-**The question detection differs between the two, deliberately.** PowerShell's `-match` anchors `$` at the end of the whole string. `grep` anchors it at the end of *every* line, so a literal translation would play the decision-needed clip for any multi-line answer that merely contains a question — which is most of them. The shell version therefore classifies on the **last non-empty line**. `tests/test-classification.sh` is the regression guard.
+### `hooks/play-category.js` and `hooks/play-category.ps1`
 
-**It used to check for a recent subagent-done marker and skip its own clip.** That existed because `SubagentStop` fired moments before `Stop` when a subagent was the turn's last action, giving two "done" clips for one completion. `SubagentStop` is unwired as of 1.3.0 and the category is gone, so there is nothing left to double up with; the marker file `$CLAUDE_DIR/.subagent-done-at` is no longer written or read, and installing deletes any left behind.
+Takes a category name and plays a random clip from it. Used by every wired event except `Stop`. **This is the hook wired to `PreToolUse`**, where a non-zero exit blocks the tool call — every code path must exit 0.
 
-### `hooks/play-category.ps1` and `hooks/play-category.sh`
+### `tests/installer.test.js`
 
-Takes a category name and plays a random clip from it. Used by every wired event **except** `Stop`, which has to work out its own category first.
-
-```
-play-category.ps1 -Category decision-needed      # Notification
-play-category.sh  error                          # StopFailure
-```
-
-One parameterised script rather than one script per event: the fixed-category events differ only in which folder they read, and a near-identical file each per platform would be several more files to keep in step.
-
-All four hook scripts exit quietly — and with status 0 — when the resolved folder holds no sounds. A non-zero exit surfaces a hook error in the transcript, which a missing sound file does not warrant.
-
-### Why only Windows waits for the clip duration
-
-The PowerShell hooks poll `NaturalDuration` before sleeping. That exists **only** because .NET's `MediaPlayer.Play()` is asynchronous — without it the script would exit before the sound finished.
-
-`afplay` blocks until the clip ends, so the shell hooks need none of that machinery. The asymmetry is correct and should not be "fixed". Both platforms do cap playback at roughly six seconds, because a user can drop a three-minute file into a theme folder and this runs at the end of every response.
-
-### Why the shell hooks avoid `$RANDOM`
-
-Claude Code spawns hooks via `sh -c`, not the user's login shell. `$RANDOM` is a bashism and is unavailable under `sh`, so clip selection reads `/dev/urandom` through `od`, with an `awk` fallback. `tests/test-clip-selection.sh` samples the same path.
+The test suite (`npm test` / `node tests/installer.test.js`), using bare `node:assert` — no framework, matching the package's zero-dependency policy. Covers `src/plan.js`, `src/settings.js` (merge/unwire semantics, BOM handling, ownership of legacy script names), `src/install.js`/`src/uninstall.js` (full install/uninstall round trips, legacy-clip cleanup, survivor detection), and the `hooks/play-sound.js` classifier and `hooks/play-lib.js` player-gating logic.
 
 ### `tests/Test-TaskCompleteRandomness.ps1`
 
-Sampling harness that mirrors the hook's random selection logic and prints a markdown distribution table. It does not play audio. Defaults to the installed `%USERPROFILE%\.claude\sounds\claude\task-complete` folder; override with `-SoundDirectory` to check another theme.
+Sampling harness that mirrors the Windows hook's random selection logic and prints a markdown distribution table. Does not play audio. Defaults to the installed `%USERPROFILE%\.claude\sounds\claude\task-complete` folder.
+
+### `tests/verify-macos.sh`
+
+Manual verification harness for a packed tarball (`npm pack`), run against a sandboxed `$HOME`. Not shipped — `tests/` is excluded from the npm package.
+
+### `.github/workflows/release.yml`
+
+Publishes to npm on a published GitHub Release, via OIDC trusted publishing (no `NPM_TOKEN`). Also attaches a download zip. `workflow_dispatch` supports a dry run. The trusted-publisher config on npmjs.com names this exact filename — renaming it breaks publishing until the npm-side setting is updated.
 
 ## Wired Hook Events
 
-Three sound categories are wired. `session-start` and `subagent-done` are not — see below.
+Four events are wired. `SessionStart` and `SubagentStop` are deliberately not.
 
 | Event | Matcher | Category | Script |
 | --- | --- | --- | --- |
@@ -200,33 +208,29 @@ Three sound categories are wired. `session-start` and `subagent-done` are not �
 | `PreToolUse` | `AskUserQuestion` | `decision-needed` | `play-category` |
 | `StopFailure` | none | `error` | `play-category` |
 
-Six decisions behind that table, each verified against the hook reference:
+- **`Notification` is matched to requests for input only.** Unmatched it also fires on `auth_success` and `agent_completed` (a subagent announcing itself).
+- **`PreToolUse` on `AskUserQuestion`** covers the multiple-choice picker, which has no notification type of its own.
 
-- **`Notification` is matched to requests for input only.** Unmatched it fires on all eight notification types, including `auth_success` — a successful login announcing *"Your call."* — and `agent_completed`, which is a subagent announcing itself and is out for the same reason `SubagentStop` is. The lifecycle types `elicitation_complete` and `elicitation_response` report that a request *finished*, so they stay silent; `elicitation_dialog` is a real request and does not. `idle_prompt` is deliberately excluded: it fires on a timer rather than on a question, so it nags rather than signals.
-- **`PreToolUse` on `AskUserQuestion` exists because the multiple-choice picker has no notification type of its own.** Without it, the single most decision-shaped moment in the product would be silent.
+  > **This is the one hook that can break Claude Code.** `PreToolUse` can *block* the tool call: exit code 2 means "do not do this". Both `play-category` scripts exit 0 unconditionally, on every path, and **must stay that way**.
 
-  > **This is the one hook that can break Claude Code.** `PreToolUse` can *block* the tool call: exit code 2 means "do not do this". A hook here that exits non-zero stops the question from being asked at all. Both `play-category` scripts exit 0 unconditionally, on every path including every error path, and **must stay that way**. The PowerShell version carries an explicit `exit 0` for exactly this reason — without it the process inherits whatever `$LASTEXITCODE` happened to be.
-
-
-- **`SessionStart` is deliberately not wired.** It was, matched to `startup` alone so the greeting would not replay on `resume`, `clear`, `compact`, or `fork`. That was not enough. `startup` means every new **session**, not every app launch, and short-lived sessions are common: instrumenting the hook over a six-hour run caught 25 `SessionStart:startup` events — about four an hour, **69% of every sound heard**, with bursts as tight as four in 43 seconds, and 48% of them from a bare `$HOME` cwd rather than any project. Subagents are *not* the cause; none of the 25 carried an `agent_id`. The greeting was also the least useful clip in the set — a session starting is the one moment the terminal already has your attention, which is precisely what `task-complete` and `decision-needed` exist to cover when it does not. Re-wire it in `tools/merge-settings.*` if you want it back, but note that reinstalling strips any entry pointing at our own scripts.
-- **`SubagentStop` is deliberately not wired**, as of 1.3.0, and the `subagent-done` category is retired with it. It was wired, whispering once per subagent, with `play-sound.*` suppressing its own clip when `Stop` followed within five seconds — because a subagent finishing as the turn's last action played two "done" clips for one completion. The suppression worked; the sound was still the wrong idea. A subagent finishing is not a moment that wants the user back, the turn is still running, and a turn that fans out to several of them announced every one. Installing removes the clip as well as the entry, and `src/paths.js` carries the retired paths so an upgrade cleans up after the older version.
-- **`StopFailure` does not mean "Claude's work failed".** It fires when a turn ends on an **API error** — rate limit, auth failure, server error. Still the right trigger for the `error` clips, but not what the name suggests. It also cannot block: its output and exit code are ignored, which suits a hook that only makes a noise.
-- **`PostToolUseFailure` is deliberately not wired.** It fires on *every* failed tool call, including a `grep` that matches nothing and a red test run. An error sound there is a constant buzz and is the kind of thing that gets a project uninstalled on day one.
+- **`SessionStart` is deliberately not wired.** Measured over a six-hour run, `SessionStart:startup` fired ~4x an hour and accounted for 69% of every sound heard — short-lived sessions are common, and a session starting is the one moment the terminal already has the user's attention.
+- **`SubagentStop` is deliberately not wired, and `subagent-done` is retired**, as of 1.3.0. It used to play once per subagent, with `Stop` suppressing its own clip when it followed within five seconds — the suppression worked, but a subagent finishing isn't a moment that wants the user back, and a turn that fanned out to several subagents announced every one. `src/paths.js#LEGACY_CLIPS` and the retired `.subagent-done-at` marker exist so upgrading cleans up an older install.
+- **`StopFailure` fires on an API error** (rate limit, auth failure, server error), not on Claude's work failing. It cannot block: its output and exit code are ignored.
+- **`PostToolUseFailure` is deliberately not wired.** It fires on every failed tool call, including a `grep` that matches nothing, and would be a constant buzz.
 
 ### Turning a sound off
 
-Every hook exits quietly when its category folder is missing or empty. **Deleting the clips from a category is the supported way to disable it** — no settings edit, no reinstall, and it survives upgrades since the installer never deletes themes. Removing the hook entry from `settings.json` also works and is what a user should do to reclaim the latency of the `Stop` hook entirely.
+Deleting the clips from a category folder is the supported way to disable it — every hook exits quietly on an empty or missing folder. Removing the hook entry from `settings.json` also works, and is how a user reclaims the `Stop` hook's latency entirely.
 
 ## Maintenance Notes
 
-- **Change both platforms together.** Every hook-behaviour or install-step change now has a Windows half and a macOS half. Shipping one without the other is the most likely way this project breaks.
-- Keep `README.md` and this index in sync when hook behavior, install steps, themes, or supported platforms change.
-- Adding a sound for a new hook event is now a **one-line change per platform**: append an entry to the `$plan` array in `tools/merge-settings.ps1` and the `hookPlan()` list in `tools/merge-settings.js`. No new script is needed unless the event has to choose its own category the way `Stop` does. `tests/test-merge-settings.js` covers the macOS side.
-- **`tools/merge-settings.ps1` must end with `exit 0`.** Without an explicit exit the process inherits whatever `$LASTEXITCODE` happened to be, and `install.bat`'s `if errorlevel 1` check aborts a perfectly successful install. This has already bitten once.
-- The `Notification` hook supports a matcher on notification type, so decision-needed clips can be split further. It is currently wired **unmatched**, which means it also fires on `auth_success` and `agent_completed`.
-- Keep `task-complete` clips short. The `Stop` hook blocks for the clip's real duration on every response, so long clips are felt as latency. Voice is inherently longer than the bleeps this project used to ship — roughly 1.5 seconds is the practical ceiling.
-- Keep `install.bat` ASCII-only. `cmd` mis-parses `::` comment lines containing non-ASCII characters when the file has LF endings.
-- **Never let the shell scripts acquire CRLF endings.** `.gitattributes` pins `.bat`/`.ps1` to CRLF and `.sh`/`.command`/`.js` to LF. A CRLF shebang makes `sh` fail with `bad interpreter: /bin/sh^M`, which is a baffling error to hand a user. Check the staged blob, not just the working copy: `git cat-file -p ":install.sh" | tr -cd '\r' | wc -c` must print 0.
-- **The shell scripts must keep their executable bit in git** (`100755`). Verify with `git ls-files -s`. Without it, a fresh clone cannot run `./install.sh` and `install.command` will not launch from Finder.
-- Write the macOS hook scripts to POSIX `sh`, not bash. Claude Code spawns hooks via `sh -c`, so `[[ ]]`, arrays, `$RANDOM`, and `<<<` are unavailable regardless of the user's login shell.
-- Validate Windows changes on Windows and macOS changes on a Mac. `sh -n` catches syntax errors from either platform, and `tests/test-classification.sh` runs anywhere, but neither substitutes for running the real installer.
+- **There is one installer implementation now.** Change `src/` and `bin/cli.js`; `install.sh`/`install.bat` need touching only if the shim contract itself changes.
+- **Change both hook platforms together.** Every hook-behavior change has a Node half (`hooks/*.js`) and a PowerShell half (`hooks/*.ps1`). `tests/installer.test.js` only exercises the Node side directly — verify the PowerShell side by hand or via `tests/Test-TaskCompleteRandomness.ps1`.
+- Keep `README.md` and this index in sync when hook behavior, install steps, packs, or supported platforms change.
+- Adding a sound for a new hook event is a change to `hookPlan()` in `src/settings.js` — one array entry, both platforms picked up automatically since `hookFacts()` in `src/paths.js` already resolves the per-platform script and invocation. `tests/installer.test.js` covers the merge semantics.
+- **`hooks/play-category.*` must exit 0 on every path**, including every error path — it is wired to `PreToolUse`, which can block a tool call on a non-zero exit.
+- Keep `task-complete` clips short. The `Stop` hook blocks for the clip's real duration on every response; roughly 1.5 seconds is the practical ceiling.
+- **Never let the Unix shims or hook scripts acquire CRLF endings**, and never let `.bat`/`.ps1` files lose theirs. `.gitattributes` pins `.bat`/`.ps1` to CRLF and `.sh`/`.command`/`.js` to LF. Check the staged blob, not just the working copy: `git cat-file -p ":install.sh" | tr -cd '\r' | wc -c` must print 0.
+- **The shell scripts must keep their executable bit in git** (`100755`): `install.sh`, `install.command`. Verify with `git ls-files -s`.
+- **Zero runtime dependencies is binding**, not a preference — see `docs/adr/0001`. `node bin/cli.js` must run straight from a clone or unzipped folder with no `npm install` first.
+- ElevenLabs Voice Design prompts must stay **500 characters or fewer** — check with `wc -c` before finalizing (see `CLAUDE.md`).
