@@ -36,13 +36,13 @@ voices fall apart on one-word lines. Save it as `Claude Code`.
 - Generate **each line as its own generation**, not one block cut up afterwards.
   The pacing stays even that way.
 
-## 3. The 12 clips
+## 3. The 3 clips
 
 Length matters: `hooks/play-sound.ps1` sleeps for the clip's real duration on _every_
 response, so keep `task-complete` and `decision-needed` under ~1.5s. Filenames match
 what is checked into `sounds/claude/`.
 
-### `task-complete/` (5)
+### `task-complete/`
 
 Plays at the end of every response, so these need to be short and unremarkable.
 
@@ -50,15 +50,15 @@ Plays at the end of every response, so these need to be short and unremarkable.
 | -------------------- | ----------------------- |
 | `vo-back-to-you.mp3` | `[softly] Back to you.` |
 
-### `decision-needed/` (4)
+### `decision-needed/`
 
 Rising, unresolved, slightly forward.
 
-| File             | Text to speak              |
-| ---------------- | -------------------------- |
-| `vo-waiting.mp3` | `[softly] Waiting on you.` |
+| File                    | Text to speak              |
+| ----------------------- | -------------------------- |
+| `vo-waiting-on-you.mp3` | `[softly] Waiting on you.` |
 
-### `error/` (3)
+### `error/`
 
 Flat and factual, never alarmed.
 
@@ -100,9 +100,12 @@ Export MP3 128 kbps or better — the hooks accept `.mp3` and `.wav`.
 
 Drop the files into `sounds/claude/<category>/` and run:
 
-```bat
-install.bat
+```bash
+npx backtoyou
 ```
+
+(or `install.sh` / `install.bat` if you're working from a clone — same installer,
+three-line shims around it.)
 
 The installer only validates `task-complete` and `decision-needed`, so those two must
 be populated. `error` is wired and will play as soon as it holds a clip. Neither
