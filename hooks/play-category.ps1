@@ -4,8 +4,6 @@
 # from the assistant's last message before it can play anything.
 #
 #   play-category.ps1 -Category decision-needed
-#   play-category.ps1 -Category session-start
-#   play-category.ps1 -Category subagent-done
 #   play-category.ps1 -Category error
 #
 # Exits quietly when the category folder is missing or empty. That is the
@@ -18,8 +16,8 @@ param(
 
 # Drain the hook payload even though the category is already known from the
 # argument. Claude Code writes JSON to this process's stdin; leaving it unread
-# risks blocking the writer once a payload outgrows the pipe buffer, and the
-# larger events wired here (PreToolUse, SubagentStop) are the ones that can.
+# risks blocking the writer once a payload outgrows the pipe buffer, and
+# PreToolUse - the largest payload wired here - is the one that can.
 #
 # Guarded on IsInputRedirected, or running this script by hand would sit there
 # waiting for EOF instead of playing a sound.
@@ -37,16 +35,6 @@ $dir = "$env:USERPROFILE\.claude\sounds\$theme\$Category"
 Add-Type -AssemblyName PresentationCore
 $files = Get-ChildItem "$dir\*.mp3", "$dir\*.wav" -ErrorAction SilentlyContinue
 if ($files) {
-    # SubagentStop and Stop are distinct events, but when a subagent is the
-    # last thing a turn does, Stop fires moments after this one - two "done"
-    # clips back to back for what reads as one completion. Timestamp it so
-    # play-sound.ps1 can skip its own clip when it fires immediately after.
-    if ($Category -eq 'subagent-done') {
-        try {
-            [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() | Out-File -FilePath "$env:USERPROFILE\.claude\.subagent-done-at" -Encoding ascii -NoNewline
-        } catch { }
-    }
-
     $f = ($files | Get-Random).FullName
     $player = New-Object System.Windows.Media.MediaPlayer
     $player.Open([uri]::new($f))

@@ -211,7 +211,7 @@ printf '  [ ] The clips were audible, and task-complete/decision-needed differed
 printf '  [ ] The gigatron switch was audible without restarting Claude Code\n'
 printf '  [ ] After restarting Claude Code, real turns produce clips\n'
 printf '  [ ] A permission prompt produces the decision clip\n'
-printf '  [ ] A turn ending with a subagent does NOT double up\n'
+printf '  [ ] A subagent finishing is silent - one clip per turn, not two\n'
 printf '  [ ] The shims and install.command work from a clone\n'
 printf '\nSandbox left at %s for inspection - rm -rf it when done.\n' "$SB"
 printf 'Your real ~/.claude was never touched.\n'

@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const { hookFacts, layout, packageSoundsDir } = require('./paths');
 const { mergeSettings } = require('./settings');
+const { removeLegacyClips } = require('./uninstall');
 
 const REQUIRED_CATEGORIES = ['task-complete', 'decision-needed'];
 const CLIP_EXTENSIONS = new Set(['.mp3', '.wav']);
@@ -128,6 +129,19 @@ function runFullInstall({ pack, version, root, sourceSounds, sourceHooks, log })
   // Every pack comes along, so installing one never deletes a custom one.
   copyDir(soundsFrom, paths.soundsDir);
   lines.push('ok  Sound packs copied');
+
+  // Copying never deletes, so a category this package has retired would sit
+  // in ~/.claude for ever otherwise - and play again the moment someone
+  // wired the event back by hand. Unwiring it is only half the job.
+  const legacy = removeLegacyClips(paths.soundsDir);
+  if (legacy > 0) {
+    lines.push(`ok  Removed ${legacy} retired subagent-done clip${legacy === 1 ? '' : 's'}`);
+  }
+
+  // The subagent-done marker, left behind by hooks older than 1.3.0.
+  try {
+    fs.unlinkSync(paths.markerFile);
+  } catch { /* not there, which is the normal case */ }
 
   for (const name of hookFiles) {
     fs.copyFileSync(path.join(hooksFrom, name), path.join(paths.hooksDir, name));

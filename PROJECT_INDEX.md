@@ -55,17 +55,15 @@ The settings merge therefore runs through `osascript -l JavaScript` (JXA), which
 │   ├── merge-settings.js       # macOS JXA settings merge, run by install.sh
 │   └── lint-json.js            # macOS JXA settings.json validation, run by install.sh
 ├── sounds/
-│   └── claude/                 # 15 voice-over MP3s, 14 of them wired
+│   └── claude/                 # 13 voice-over MP3s, 12 of them wired
 │       ├── task-complete/          # 5
 │       ├── decision-needed/        # 4
 │       ├── error/                  # 3
-│       ├── subagent-done/          # 2
 │       └── session-start/          # 1, unwired - nothing reads this folder
 └── tests/
     ├── Test-TaskCompleteRandomness.ps1  # Windows clip distribution
     ├── test-clip-selection.sh           # shell clip distribution
     ├── test-classification.sh           # Stop hook question detection
-    ├── test-subagent-suppression.sh     # Stop hook redundant-clip suppression
     ├── test-merge-settings.js           # macOS settings merge (needs node)
     └── test-lint-json.js                # macOS settings.json validation (needs node)
 ```
@@ -79,7 +77,7 @@ Both installers follow the same sequence. `$CLAUDE` below is `%USERPROFILE%\.cla
 3. The installer creates the hook and sound directories under `$CLAUDE`.
 4. The installer copies hook scripts from `hooks/` and the entire `sounds/` tree, so every theme present is installed. macOS then makes the hook scripts executable.
 5. The installer writes the chosen theme name to `$CLAUDE/sound-theme.txt`.
-6. The installer creates or updates `$CLAUDE/settings.json` with the five wired hook commands. It strips every entry pointing at this project's own scripts — current or from an older version — then writes the current plan back, so an upgrade corrects a stale path, a missing timeout, or a matcher an earlier release got wrong. Hooks belonging to the user are untouched. Both platforms back the existing file up to `settings.json.bak.<timestamp>` and validate before and after; on failure the backup is restored.
+6. The installer creates or updates `$CLAUDE/settings.json` with the four wired hook commands. It strips every entry pointing at this project's own scripts — current or from an older version — then writes the current plan back, so an upgrade corrects a stale path, a missing timeout, or a matcher an earlier release got wrong. Hooks belonging to the user are untouched. Both platforms back the existing file up to `settings.json.bak.<timestamp>` and validate before and after; on failure the backup is restored.
 7. Claude Code or Cowork runs the configured hooks. Each script reads the theme file, then plays a random clip from `sounds/<theme>/<category>/`.
 
 ## Installed Locations
@@ -99,7 +97,6 @@ Windows installs `.ps1` hooks, macOS installs `.sh` hooks; the rest of the tree 
         ├── task-complete\
         ├── decision-needed\
         ├── error\
-        ├── subagent-done\
         └── session-start\      # installed but unwired; no hook reads it
 ```
 
@@ -163,7 +160,7 @@ Claude `Stop` hook. Reads the hook payload from standard input, checks whether `
 
 **The question detection differs between the two, deliberately.** PowerShell's `-match` anchors `$` at the end of the whole string. `grep` anchors it at the end of *every* line, so a literal translation would play the decision-needed clip for any multi-line answer that merely contains a question — which is most of them. The shell version therefore classifies on the **last non-empty line**. `tests/test-classification.sh` is the regression guard.
 
-**Before playing a task-complete clip, it checks for a recent subagent-done marker and skips its own clip if one exists.** `SubagentStop` and `Stop` are distinct events, but when a subagent is the last thing a turn does, `SubagentStop`'s clip plays moments before this hook fires — two "done" clips back to back for what reads as one completion. `hooks/play-category.*` timestamps that moment in `$CLAUDE_DIR/.subagent-done-at`; this hook skips its clip when that file is 5 seconds old or less, and always deletes it, so the marker cannot suppress an unrelated `Stop` later. A real decision-needed question still plays regardless of the marker — it is a distinct request for input, not a duplicate announcement. `tests/test-subagent-suppression.sh` is the regression guard.
+**It used to check for a recent subagent-done marker and skip its own clip.** That existed because `SubagentStop` fired moments before `Stop` when a subagent was the turn's last action, giving two "done" clips for one completion. `SubagentStop` is unwired as of 1.3.0 and the category is gone, so there is nothing left to double up with; the marker file `$CLAUDE_DIR/.subagent-done-at` is no longer written or read, and installing deletes any left behind.
 
 ### `hooks/play-category.ps1` and `hooks/play-category.sh`
 
@@ -171,12 +168,10 @@ Takes a category name and plays a random clip from it. Used by every wired event
 
 ```
 play-category.ps1 -Category decision-needed      # Notification
-play-category.sh  subagent-done                  # SubagentStop
+play-category.sh  error                          # StopFailure
 ```
 
-One parameterised script rather than one script per event: four events differ only in which folder they read, and four near-identical files per platform would be eight files to keep in step.
-
-**When the category is `subagent-done` and a clip plays, it writes the current time to `$CLAUDE_DIR/.subagent-done-at`.** That marker is what lets `play-sound.*` detect and skip a redundant task-complete clip moments later — see above. No other category writes it.
+One parameterised script rather than one script per event: the fixed-category events differ only in which folder they read, and a near-identical file each per platform would be several more files to keep in step.
 
 All four hook scripts exit quietly — and with status 0 — when the resolved folder holds no sounds. A non-zero exit surfaces a hook error in the transcript, which a missing sound file does not warrant.
 
@@ -196,26 +191,25 @@ Sampling harness that mirrors the hook's random selection logic and prints a mar
 
 ## Wired Hook Events
 
-Four sound categories are wired. `session-start` is not — see below.
+Three sound categories are wired. `session-start` and `subagent-done` are not — see below.
 
 | Event | Matcher | Category | Script |
 | --- | --- | --- | --- |
 | `Stop` | none | `task-complete` or `decision-needed` | `play-sound` |
 | `Notification` | `permission_prompt\|agent_needs_input\|elicitation_dialog` | `decision-needed` | `play-category` |
 | `PreToolUse` | `AskUserQuestion` | `decision-needed` | `play-category` |
-| `SubagentStop` | none | `subagent-done` | `play-category` |
 | `StopFailure` | none | `error` | `play-category` |
 
-Five decisions behind that table, each verified against the hook reference:
+Six decisions behind that table, each verified against the hook reference:
 
-- **`Notification` is matched to requests for input only.** Unmatched it fires on all eight notification types, including `auth_success` — a successful login announcing *"Your call."* — and `agent_completed`, which `SubagentStop` already owns, giving two clips back to back for one finished subagent. The lifecycle types `elicitation_complete` and `elicitation_response` report that a request *finished*, so they stay silent; `elicitation_dialog` is a real request and does not. `idle_prompt` is deliberately excluded: it fires on a timer rather than on a question, so it nags rather than signals.
+- **`Notification` is matched to requests for input only.** Unmatched it fires on all eight notification types, including `auth_success` — a successful login announcing *"Your call."* — and `agent_completed`, which is a subagent announcing itself and is out for the same reason `SubagentStop` is. The lifecycle types `elicitation_complete` and `elicitation_response` report that a request *finished*, so they stay silent; `elicitation_dialog` is a real request and does not. `idle_prompt` is deliberately excluded: it fires on a timer rather than on a question, so it nags rather than signals.
 - **`PreToolUse` on `AskUserQuestion` exists because the multiple-choice picker has no notification type of its own.** Without it, the single most decision-shaped moment in the product would be silent.
 
   > **This is the one hook that can break Claude Code.** `PreToolUse` can *block* the tool call: exit code 2 means "do not do this". A hook here that exits non-zero stops the question from being asked at all. Both `play-category` scripts exit 0 unconditionally, on every path including every error path, and **must stay that way**. The PowerShell version carries an explicit `exit 0` for exactly this reason — without it the process inherits whatever `$LASTEXITCODE` happened to be.
 
 
-- **`SessionStart` is deliberately not wired.** It was, matched to `startup` alone so the greeting would not replay on `resume`, `clear`, `compact`, or `fork`. That was not enough. `startup` means every new **session**, not every app launch, and short-lived sessions are common: instrumenting the hook over a six-hour run caught 25 `SessionStart:startup` events — about four an hour, **69% of every sound heard**, with bursts as tight as four in 43 seconds, and 48% of them from a bare `$HOME` cwd rather than any project. Subagents are *not* the cause; none of the 25 carried an `agent_id`, and a subagent costs only its `SubagentStop` whisper. The greeting was also the least useful clip in the set — a session starting is the one moment the terminal already has your attention, which is precisely what `task-complete` and `decision-needed` exist to cover when it does not. Re-wire it in `tools/merge-settings.*` if you want it back, but note that reinstalling strips any entry pointing at our own scripts.
-- **`SubagentStop` and `Stop` can double up.** They are separate events for separate things — a subagent finishing versus the whole turn ending — but when a subagent is the turn's last action, they fire moments apart. Left alone that plays `subagent-done` and then `task-complete` back to back for what is really one completion. `play-category.*` timestamps the subagent-done moment and `play-sound.*` skips its own clip when that timestamp is recent; see `hooks/play-sound.ps1` and `hooks/play-sound.sh` above.
+- **`SessionStart` is deliberately not wired.** It was, matched to `startup` alone so the greeting would not replay on `resume`, `clear`, `compact`, or `fork`. That was not enough. `startup` means every new **session**, not every app launch, and short-lived sessions are common: instrumenting the hook over a six-hour run caught 25 `SessionStart:startup` events — about four an hour, **69% of every sound heard**, with bursts as tight as four in 43 seconds, and 48% of them from a bare `$HOME` cwd rather than any project. Subagents are *not* the cause; none of the 25 carried an `agent_id`. The greeting was also the least useful clip in the set — a session starting is the one moment the terminal already has your attention, which is precisely what `task-complete` and `decision-needed` exist to cover when it does not. Re-wire it in `tools/merge-settings.*` if you want it back, but note that reinstalling strips any entry pointing at our own scripts.
+- **`SubagentStop` is deliberately not wired**, as of 1.3.0, and the `subagent-done` category is retired with it. It was wired, whispering once per subagent, with `play-sound.*` suppressing its own clip when `Stop` followed within five seconds — because a subagent finishing as the turn's last action played two "done" clips for one completion. The suppression worked; the sound was still the wrong idea. A subagent finishing is not a moment that wants the user back, the turn is still running, and a turn that fans out to several of them announced every one. Installing removes the clip as well as the entry, and `src/paths.js` carries the retired paths so an upgrade cleans up after the older version.
 - **`StopFailure` does not mean "Claude's work failed".** It fires when a turn ends on an **API error** — rate limit, auth failure, server error. Still the right trigger for the `error` clips, but not what the name suggests. It also cannot block: its output and exit code are ignored, which suits a hook that only makes a noise.
 - **`PostToolUseFailure` is deliberately not wired.** It fires on *every* failed tool call, including a `grep` that matches nothing and a red test run. An error sound there is a constant buzz and is the kind of thing that gets a project uninstalled on day one.
 

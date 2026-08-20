@@ -39,7 +39,7 @@ const UNIX_FACTS = {
 
 function seedPacks(root, names) {
   for (const n of names) {
-    for (const c of ['task-complete', 'decision-needed', 'error', 'subagent-done']) {
+    for (const c of ['task-complete', 'decision-needed', 'error']) {
       const dir = path.join(root, n, c);
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'clip.mp3'), 'not really audio');
@@ -122,7 +122,7 @@ test('an absent settings.json is created with only our hooks', () => {
   mergeSettings(p, path.join(root, 'hooks'), UNIX_FACTS);
   const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
   assert.deepEqual(Object.keys(cfg), ['hooks']);
-  assert.equal(Object.keys(cfg.hooks).length, 5);
+  assert.equal(Object.keys(cfg.hooks).length, 4);
 });
 
 test('unrelated user config survives the merge untouched', () => {
@@ -163,7 +163,7 @@ test('merging twice does not duplicate our entries', () => {
   mergeSettings(p, hooksDir, UNIX_FACTS);
   const once = fs.readFileSync(p, 'utf8');
   const second = mergeSettings(p, hooksDir, UNIX_FACTS);
-  assert.equal(second.removed, 5, 'the second run strips the five it finds');
+  assert.equal(second.removed, 4, 'the second run strips the four it finds');
   assert.equal(fs.readFileSync(p, 'utf8'), once, 'output must be byte-identical on re-run');
 });
 
@@ -184,6 +184,22 @@ test('upgrading from a .sh install unwires the old entries', () => {
   assert.ok(!all.some((c) => c.includes('play-sound-decision')), 'the legacy decision hook must go');
 });
 
+test('SubagentStop is never wired, and a 1.2.0 entry is unwired', () => {
+  const root = sandbox();
+  const p = path.join(root, 'settings.json');
+  fs.writeFileSync(p, JSON.stringify({
+    hooks: {
+      SubagentStop: [{ hooks: [{ type: 'command', command: 'node "/home/j/.claude/hooks/play-category.js" subagent-done', timeout: 10 }] }],
+    },
+  }, null, 2));
+  const { removed } = mergeSettings(p, path.join(root, 'hooks'), UNIX_FACTS);
+  assert.equal(removed, 1, 'the old entry must be stripped on upgrade');
+  const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+  assert.equal(cfg.hooks.SubagentStop, undefined, 'and not written back');
+  const all = Object.values(cfg.hooks).flatMap((g) => g.flatMap((x) => x.hooks.map((h) => h.command)));
+  assert.ok(!all.some((c) => c.includes('subagent-done')), 'no subagent-done clip may be wired');
+});
+
 test('SessionStart is never wired', () => {
   const root = sandbox();
   const p = path.join(root, 'settings.json');
@@ -198,7 +214,7 @@ test('every entry carries the 10s timeout', () => {
   mergeSettings(p, path.join(root, 'hooks'), UNIX_FACTS);
   const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
   const all = Object.values(cfg.hooks).flatMap((g) => g.flatMap((x) => x.hooks));
-  assert.ok(all.length === 5 && all.every((h) => h.timeout === 10));
+  assert.ok(all.length === 4 && all.every((h) => h.timeout === 10));
 });
 
 test('emptied events are dropped, not left as []', () => {
@@ -227,7 +243,7 @@ test('a UTF-8 BOM is tolerated and preserved', () => {
   assert.equal(written.charCodeAt(0), 0xfeff, 'the BOM must be preserved, not silently dropped');
   const cfg = JSON.parse(written.slice(1));
   assert.equal(cfg.model, 'claude-opus-5');
-  assert.equal(Object.keys(cfg.hooks).length, 5);
+  assert.equal(Object.keys(cfg.hooks).length, 4);
 });
 
 test('a file without a BOM does not gain one', () => {
@@ -320,6 +336,44 @@ test('a full install lands packs, hooks, theme and version', () => {
 
   assert.equal(fs.readFileSync(paths.themeFile, 'utf8').trim(), 'claude');
   assert.equal(fs.readFileSync(paths.versionFile, 'utf8').trim(), '1.2.0');
+});
+
+test('installing removes a retired subagent-done clip but keeps a user take', () => {
+  const root = sandbox();
+  const src = path.join(root, 'src-sounds');
+  const hooks = path.join(root, 'src-hooks');
+  seedPacks(src, ['claude', 'gigatron']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  const home = path.join(root, 'home', '.claude');
+  const paths = layout(home);
+
+  // A 1.2.0 install: our clip in every pack, plus a take of the user's own
+  // sitting in the same folder.
+  for (const pack of ['claude', 'gigatron']) {
+    const dir = path.join(paths.soundsDir, pack, 'subagent-done');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'vo-subagents-done.mp3'), 'ours');
+  }
+  fs.writeFileSync(path.join(paths.soundsDir, 'gigatron', 'subagent-done', 'mine.mp3'), 'theirs');
+  fs.writeFileSync(paths.markerFile, '1755000000', 'utf8');
+
+  runFullInstall({ pack: 'claude', version: '1.3.0', root: home, sourceSounds: src, sourceHooks: hooks });
+
+  assert.equal(
+    fs.existsSync(path.join(paths.soundsDir, 'claude', 'subagent-done')),
+    false,
+    'the emptied folder goes with the clip'
+  );
+  assert.ok(
+    fs.existsSync(path.join(paths.soundsDir, 'gigatron', 'subagent-done', 'mine.mp3')),
+    'a take the user added is theirs and stays'
+  );
+  assert.equal(
+    fs.existsSync(path.join(paths.soundsDir, 'gigatron', 'subagent-done', 'vo-subagents-done.mp3')),
+    false,
+    'ours goes even when the folder survives'
+  );
+  assert.equal(fs.existsSync(paths.markerFile), false, 'the stale marker is cleaned up too');
 });
 
 test('installing one pack never deletes a custom one', () => {
@@ -555,7 +609,7 @@ test('shippedClips enumerates by relative path', () => {
   seedPacks(root, ['claude']);
   const rels = shippedClips(root).map((r) => r.split(path.sep).join('/'));
   assert.ok(rels.includes('claude/task-complete/clip.mp3'));
-  assert.equal(rels.length, 4);
+  assert.equal(rels.length, 3, 'one per wired category');
 });
 
 console.log('\nhook classification (must match play-sound.ps1 exactly)');
@@ -567,8 +621,8 @@ process.env.HOME = HOOK_HOME;
 process.env.USERPROFILE = HOOK_HOME;
 os.homedir = () => HOOK_HOME;
 
-const { classify, shouldSkip } = require('../hooks/play-sound');
-const { PLAYERS, MARKER } = require('../hooks/play-lib');
+const { classify } = require('../hooks/play-sound');
+const { PLAYERS } = require('../hooks/play-lib');
 
 test('a trailing question mark means decision-needed', () => {
   assert.equal(classify('Want me to push it?'), 'decision-needed');
@@ -596,50 +650,6 @@ test('a question mid-message does not count', () => {
 
 test('a question on the last line of a multi-line message counts', () => {
   assert.equal(classify('Pushed the branch.\n\nAnything else?'), 'decision-needed');
-});
-
-console.log('\nsubagent suppression (ported from tests/test-subagent-suppression.sh)');
-
-const writeMarker = (secondsAgo) => {
-  fs.mkdirSync(path.dirname(MARKER), { recursive: true });
-  fs.writeFileSync(MARKER, String(Math.floor(Date.now() / 1000) - secondsAgo), 'utf8');
-};
-
-test('a fresh marker suppresses a task-complete clip', () => {
-  writeMarker(1);
-  assert.equal(shouldSkip('task-complete'), true);
-});
-
-test('the marker is single-use, even when it suppressed nothing', () => {
-  writeMarker(1);
-  shouldSkip('task-complete');
-  assert.equal(fs.existsSync(MARKER), false, 'must be consumed');
-  assert.equal(shouldSkip('task-complete'), false, 'a second Stop must play');
-});
-
-test('a stale marker does not suppress', () => {
-  // The sh hook used a 5-second window; anything older is a separate turn.
-  writeMarker(6);
-  assert.equal(shouldSkip('task-complete'), false);
-});
-
-test('decision-needed is never suppressed', () => {
-  // A real question is a distinct request for input, not a duplicate
-  // announcement - but the marker is still consumed.
-  writeMarker(1);
-  assert.equal(shouldSkip('decision-needed'), false);
-  assert.equal(fs.existsSync(MARKER), false, 'consumed either way');
-});
-
-test('no marker means no suppression', () => {
-  try { fs.unlinkSync(MARKER); } catch { /* already gone */ }
-  assert.equal(shouldSkip('task-complete'), false);
-});
-
-test('a corrupt marker is treated as absent, not fatal', () => {
-  fs.mkdirSync(path.dirname(MARKER), { recursive: true });
-  fs.writeFileSync(MARKER, 'not a number', 'utf8');
-  assert.equal(shouldSkip('task-complete'), false);
 });
 
 console.log('\nplayer probe order (settled by #25)');

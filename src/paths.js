@@ -48,14 +48,15 @@ function layout(root) {
     soundsDir: path.join(base, 'sounds'),
     settings: path.join(base, 'settings.json'),
     themeFile: path.join(base, 'sound-theme.txt'),
-    // A dotfile beside .subagent-done-at, which the hooks already use. Kept
-    // out of sound-theme.txt deliberately: the README documents that file as
-    // one bare pack name, and hand-editing it is a supported way to switch.
+    // A dotfile rather than a line in sound-theme.txt, deliberately: the
+    // README documents that file as one bare pack name, and hand-editing it
+    // is a supported way to switch.
     versionFile: path.join(base, '.backtoyou-version'),
 
-    // Written by the hooks rather than the installer, but ours all the same,
-    // and so uninstall's business. Enumerated here so there is one list of
-    // what this project puts in ~/.claude rather than two that can drift.
+    // The subagent-done marker, written by the hooks up to 1.2.0 to stop
+    // SubagentStop and Stop doubling up. Nothing writes or reads it now that
+    // SubagentStop is unwired; it stays listed so installing and uninstalling
+    // both clear it off an older machine.
     markerFile: path.join(base, '.subagent-done-at'),
     playbackErrorFile: path.join(base, '.backtoyou-playback-error'),
     // A debug artifact from an August 2026 build. Nothing writes it now, it
@@ -75,9 +76,31 @@ function ownedStateFiles(paths) {
   ];
 }
 
+/**
+ * Clips this package used to ship and no longer does.
+ *
+ * subagent-done was retired in 1.3.0 (see the note in settings.js). Installing
+ * deletes these as well as unwiring the event, so an upgrade is enough to stop
+ * hearing them even where someone had wired the category up by hand.
+ *
+ * Exact relative paths under sounds/, matching how uninstall matches its own
+ * files: a take the user dropped into that folder is theirs, and survives.
+ */
+const LEGACY_CLIPS = ['claude', 'gigatron', 'jay-run', 'mistress-of-pain'].map((pack) =>
+  path.join(pack, 'subagent-done', 'vo-subagents-done.mp3')
+);
+
 /** Packs shipped in this package. */
 function packageSoundsDir() {
   return path.join(__dirname, '..', 'sounds');
 }
 
-module.exports = { IS_WINDOWS, hookFacts, claudeDir, layout, ownedStateFiles, packageSoundsDir };
+module.exports = {
+  IS_WINDOWS,
+  hookFacts,
+  claudeDir,
+  layout,
+  ownedStateFiles,
+  packageSoundsDir,
+  LEGACY_CLIPS,
+};
