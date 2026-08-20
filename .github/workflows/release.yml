@@ -68,6 +68,33 @@ jobs:
           fi
           echo "ok  no auth token configured in $NPMRC"
 
+      # npm reports every trusted-publishing failure as a bare ENEEDAUTH or 404
+      # with no diagnostics at all (npm/cli#9088), so this prints what the OIDC
+      # token would present to npmjs.com. Compare `repository` and
+      # `workflow_ref` against the trusted publisher configured at
+      # https://www.npmjs.com/package/backtoyou/access - every field there is
+      # case-sensitive and exact, filename extension included, and a mismatch
+      # is indistinguishable from "not configured at all" in the publish log.
+      #
+      # Dispatch only, and it publishes nothing. These claims do not depend on
+      # the audience, so none is requested. The token itself is never printed,
+      # only the claims decoded out of it.
+      - name: What OIDC would present to npm
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::No OIDC token endpoint in this job - id-token: write is missing"
+            exit 1
+          fi
+          curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" > /tmp/oidc.json
+          node -e "
+            const res = JSON.parse(require('fs').readFileSync('/tmp/oidc.json', 'utf8'));
+            const claims = JSON.parse(Buffer.from(res.value.split('.')[1], 'base64url'));
+            for (const k of ['repository', 'workflow_ref', 'job_workflow_ref', 'environment', 'ref']) {
+              console.log(k.padEnd(18) + ' ' + (claims[k] || '(absent)'));
+            }
+          "
+
       - name: Tests
         run: npm test
 
