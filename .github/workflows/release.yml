@@ -32,10 +32,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # NO registry-url here, deliberately. That input makes setup-node write
+      # "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" into a temp
+      # .npmrc. With no token secret - and there is none, by design - that
+      # expands to an empty string, npm reads the line as "auth is already
+      # configured", never starts the OIDC exchange, and publishes with empty
+      # credentials. The registry answers an unauthenticated PUT with a 404,
+      # so the failure reads as "package not found" rather than "not logged
+      # in". That is exactly how the v1.3.0 release failed. The default
+      # registry is registry.npmjs.org anyway, so the input bought nothing.
+      # See actions/setup-node#1551.
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
 
       # Node 22.14 ships npm 10.9.x, which is BELOW the 11.5.1 floor trusted
       # publishing requires. Upgrading explicitly rather than trusting whatever
@@ -44,6 +53,47 @@ jobs:
         run: |
           npm install -g npm@latest
           npm --version
+
+      # The guard for the trap above: if anything puts an auth token back into
+      # the effective npmrc, npm silently skips OIDC and the publish fails
+      # 400 lines later with a misleading 404. Fail here instead, where the
+      # message says what is actually wrong.
+      - name: OIDC must be the only credential
+        run: |
+          NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          if [ -f "$NPMRC" ] && grep -q '_authToken' "$NPMRC"; then
+            echo "::error::$NPMRC configures an auth token; npm will skip the OIDC exchange"
+            grep -n '_authToken' "$NPMRC"
+            exit 1
+          fi
+          echo "ok  no auth token configured in $NPMRC"
+
+      # npm reports every trusted-publishing failure as a bare ENEEDAUTH or 404
+      # with no diagnostics at all (npm/cli#9088), so this prints what the OIDC
+      # token would present to npmjs.com. Compare `repository` and
+      # `workflow_ref` against the trusted publisher configured at
+      # https://www.npmjs.com/package/backtoyou/access - every field there is
+      # case-sensitive and exact, filename extension included, and a mismatch
+      # is indistinguishable from "not configured at all" in the publish log.
+      #
+      # Dispatch only, and it publishes nothing. These claims do not depend on
+      # the audience, so none is requested. The token itself is never printed,
+      # only the claims decoded out of it.
+      - name: What OIDC would present to npm
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::No OIDC token endpoint in this job - id-token: write is missing"
+            exit 1
+          fi
+          curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" > /tmp/oidc.json
+          node -e "
+            const res = JSON.parse(require('fs').readFileSync('/tmp/oidc.json', 'utf8'));
+            const claims = JSON.parse(Buffer.from(res.value.split('.')[1], 'base64url'));
+            for (const k of ['repository', 'workflow_ref', 'job_workflow_ref', 'environment', 'ref']) {
+              console.log(k.padEnd(18) + ' ' + (claims[k] || '(absent)'));
+            }
+          "
 
       - name: Tests
         run: npm test

@@ -221,7 +221,7 @@ The deleted `.sh` hook classified on the **last non-empty line** instead, becaus
 
 ### `hooks/play-category.js` and `hooks/play-category.ps1`
 
-Takes a category name and plays a random clip from it. Used by every wired event **except** `Stop`, which has to work out its own category first.
+The test suite (`npm test` / `node tests/installer.test.js`), using bare `node:assert` — no framework, matching the package's zero-dependency policy. Covers `src/plan.js`, `src/settings.js` (merge/unwire semantics, BOM handling, ownership of legacy script names), `src/install.js`/`src/uninstall.js` (full install/uninstall round trips, legacy-clip cleanup, survivor detection), and the `hooks/play-sound.js` classifier and `hooks/play-lib.js` player-gating logic.
 
 ```text
 node play-category.js decision-needed            # Notification
