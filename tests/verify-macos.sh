@@ -126,6 +126,9 @@ printf '%s' '{"last_assistant_message":"All done."}' | eval "$CMD"
 # --- 5. upgrade from a legacy .sh install ----------------------------------
 
 hdr '5. Upgrade from the old .sh install - the path every current user takes'
+# Seeded the way 1.2.0 left a machine, SubagentStop included: that event was
+# wired then and is retired now, so an upgrade has to take it out. The stale
+# check below is what proves it did.
 rm -rf "$SB/.claude"
 mkdir -p "$SB/.claude/hooks"
 printf 'mistress-of-pain\n' > "$SB/.claude/sound-theme.txt"
@@ -136,6 +139,7 @@ cat > "$SB/.claude/settings.json" <<'JSON'
   "hooks": {
     "Stop": [ { "hooks": [ { "type": "command", "command": "\"~/.claude/hooks/play-sound.sh\"", "timeout": 10 } ] } ],
     "Notification": [ { "hooks": [ { "type": "command", "command": "\"~/.claude/hooks/play-sound-decision.sh\"", "timeout": 10 } ] } ],
+    "SubagentStop": [ { "hooks": [ { "type": "command", "command": "\"~/.claude/hooks/play-category.sh\" subagent-done", "timeout": 10 } ] } ],
     "PostToolUse": [ { "hooks": [ { "type": "command", "command": "my-own-hook.sh", "timeout": 5 } ] } ]
   }
 }
@@ -152,7 +156,7 @@ console.log((c.model === "claude-opus-5" ? "  PASS  " : "  FAIL  ") + "unrelated
 console.log((c.env && c.env.KEEP_ME === "yes" ? "  PASS  " : "  FAIL  ") + "nested config preserved");
 console.log((stale.length === 0 ? "  PASS  " : "  FAIL  ") + "no stale .sh entries (" + stale.length + ")");
 console.log((mine.length === 1 ? "  PASS  " : "  FAIL  ") + "third-party hook untouched");
-console.log((ours.length === 5 ? "  PASS  " : "  FAIL  ") + "five Back to You entries wired (" + ours.length + ")");
+console.log((ours.length === 4 ? "  PASS  " : "  FAIL  ") + "four Back to You entries wired (" + ours.length + ")");
 '
 
 # --- 6. uninstall ----------------------------------------------------------
