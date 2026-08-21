@@ -310,9 +310,9 @@ Every hook exits quietly when its category folder is missing or empty. **Deletin
 
 It covers the plan table, the settings rewrite (including BOM round-tripping, third-party hook survival, and upgrading from a `.sh` install), install and uninstall effects, `Stop` classification against the PowerShell regex, and the player probe order. One test reads the **real** `~/.claude/settings.json` on the machine running it, if there is one, and asserts it survives a merge semantically intact.
 
-`tests/verify-macos.sh` is the manual release harness: it takes a `npm pack` tarball, installs it into a sandboxed `HOME`, and walks cold install, playback, hook latency, pack switching, upgrade from a legacy `.sh` install, uninstall, and the shims — printing a report to paste onto the release issue, with the checks a machine cannot make (is the clip *audible*, is it the *right* clip) called out to answer by ear.
+`tests/verify-macos.sh` is the manual release harness: it takes a `npm pack` tarball, installs it into a sandboxed `HOME`, and walks cold install, playback, hook latency, pack switching, upgrade from an older install, uninstall, and the shims — printing a report to paste onto the release issue, with the checks a machine cannot make (is the clip *audible*, is it the *right* clip) called out to answer by ear.
 
-> Its step 5 currently asserts `ours.length === 5` — five wired entries — which was correct until `SubagentStop` was unwired in 1.3.0. `hookPlan()` now returns four, so that line fails on a correct install. It was missed because the harness is run by hand at release time, not in CI.
+Its upgrade step is seeded twice, because there are two populations to upgrade. `.sh` installs are v1.1.1 and earlier — clone-only, never on npm. 1.2.0 is the Node CLI and the only version npm has served, so that is the shape nearly every real upgrade starts from. Both wired `SubagentStop`, and the 1.2.0 seed also carries the retired clip and the stale `.subagent-done-at` marker on disk, since unwiring the event is only half of what the retirement has to do.
 
 `tests/Test-TaskCompleteRandomness.ps1` mirrors the hook's random selection and prints a markdown distribution table. It does not play audio. Defaults to the installed `%USERPROFILE%\.claude\sounds\claude\task-complete`; override with `-SoundDirectory`.
 
