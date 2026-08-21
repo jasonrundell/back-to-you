@@ -38,7 +38,8 @@ voices fall apart on one-word lines. Save it as `Claude Code`.
 
 ## 3. The 3 clips
 
-Length matters: `hooks/play-sound.ps1` sleeps for the clip's real duration on _every_
+Length matters: the `Stop` hook — `hooks/play-sound.js` on macOS and Linux,
+`hooks/play-sound.ps1` on Windows — blocks for the clip's real duration on _every_
 response, so keep `task-complete` and `decision-needed` under ~1.5s. Filenames match
 what is checked into `sounds/claude/`.
 
@@ -118,5 +119,7 @@ used to ship. See the hook table in `README.md`.
 A voice clip on _every_ response is more intrusive than a short tone, and the `Stop`
 hook blocks for the clip's full length while it plays. If it starts to grate, the fix
 is to speak only on `decision-needed` and play something brief — or nothing — for
-`task-complete`. That needs a change to `hooks/play-sound.ps1`, which currently
-resolves both categories from the same theme folder.
+`task-complete`. That needs a change in two places — `hooks/play-sound.js` for
+macOS and Linux, `hooks/play-sound.ps1` for Windows — which each resolve both
+categories from the same theme folder today, and which have to keep classifying
+identically whichever way they change.
