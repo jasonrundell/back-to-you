@@ -1,6 +1,6 @@
 {
   "name": "backtoyou",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "A quiet voice for Claude Code — says \"Back to you.\" when a task finishes. Voices by elevenlabs.io.",
   "bin": {
     "backtoyou": "bin/cli.js"

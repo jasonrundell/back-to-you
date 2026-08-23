@@ -8,7 +8,7 @@ It ships as the npm package `backtoyou`, and there is exactly **one** installer:
 
 Node is therefore a hard requirement, at install time and at hook runtime on macOS and Linux. The **hooks** are still split by platform — Node on Unix, PowerShell on Windows — because Windows plays audio through `System.Windows.Media.MediaPlayer`, a WPF assembly Node cannot reach. That split is measured, not assumed; the numbers are in the ADR.
 
-Four voice packs ship (`claude`, `gigatron`, `jay-run`, `mistress-of-pain`), one clip per category. Each pack keeps its ElevenLabs Voice Design prompt checked in beside its audio, so a pack can be regenerated or re-voiced without redesigning it.
+Six voice packs ship (`claude`, `gigatron`, `good-boy`, `jay-run`, `mistress-of-pain`, `uncle-jim`), one clip per category — plus a second `decision-needed` take in every pack but `jay-run`, which the random pick alternates between. Each pack keeps its ElevenLabs Voice Design prompt checked in beside its audio, so a pack can be regenerated or re-voiced without redesigning it.
 
 ## Feature Capabilities
 
@@ -80,15 +80,18 @@ Two format gates are mandatory rather than tidy:
 │   ├── play-lib.js                 # shared by both; never invoked directly
 │   ├── play-sound.ps1              # Windows Stop
 │   └── play-category.ps1           # Windows, all fixed-category events
-├── sounds/                     # 12 mp3s: 4 packs x 3 wired categories
+├── sounds/                     # 23 mp3s: 6 packs x 3 wired categories, + 5 second takes
 │   ├── claude/                     # the default pack
 │   │   ├── task-complete/vo-back-to-you.mp3
 │   │   ├── decision-needed/vo-waiting-on-you.mp3
+│   │   ├── decision-needed/vo-question-for-you.mp3
 │   │   ├── error/vo-hit-an-error.mp3
 │   │   └── elevenlabs-prompt.md    # the Voice Design prompt for this pack
 │   ├── gigatron/                   # same shape, plus elevenlabs-prompt.md
+│   ├── good-boy/                   # same shape, plus elevenlabs-prompt.md
 │   ├── jay-run/                    # same shape; no prompt checked in yet
-│   └── mistress-of-pain/           # same shape, plus elevenlabs-prompt.md
+│   ├── mistress-of-pain/           # same shape, plus elevenlabs-prompt.md
+│   └── uncle-jim/                  # same shape, plus elevenlabs-prompt.md
 ├── docs/
 │   ├── adr/
 │   │   └── 0001-node-as-a-hard-requirement.md
@@ -142,8 +145,10 @@ Windows installs the `.ps1` hooks, macOS and Linux the `.js` ones. Everything el
 └── sounds/
     ├── claude/                     # task-complete/  decision-needed/  error/
     ├── gigatron/
+    ├── good-boy/
     ├── jay-run/
     ├── mistress-of-pain/
+    ├── uncle-jim/
     └── <anything the user made>    # never touched by installing or uninstalling
 ```
 
