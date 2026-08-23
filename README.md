@@ -36,28 +36,30 @@ Back to You gives [Claude Code](https://code.claude.com/docs) a quiet voice. It 
 
 ## What you hear
 
-Each pack ships one clip per hook today.
+Each pack ships one clip per hook, and a second take for the decision hook in all but `jay-run`.
 
 | When it plays | What you hear |
 | --- | --- |
 | **A task finishes** | _"Back to you."_ |
-| **Claude needs a decision** | _"Waiting on you."_ |
+| **Claude needs a decision** | _"Waiting on you."_ or _"Question for you."_ |
 | **A turn fails** | _"Hit an error."_ |
 
 The first row plays at the end of **every** response. That is the point, and it is also the thing to know before installing: the clips are kept under a second and a half for exactly this reason.
 
-Want more variety? Drop extra `.mp3` or `.wav` files into any `sounds/<pack>/<category>/` folder — the hook picks one at random each time it fires, so add as many takes as you like.
+Want more variety? Drop extra `.mp3` or `.wav` files into any `sounds/<pack>/<category>/` folder — the hook picks one at random each time it fires, so add as many takes as you like. Most packs already ship two decision-needed takes for exactly this reason.
 
 ## Voice packs
 
-Four packs ship today. The installer asks which to activate; switching later is a one-line edit to `sound-theme.txt`, no reinstall needed.
+Six packs ship today. The installer asks which to activate; switching later is a one-line edit to `sound-theme.txt`, no reinstall needed.
 
 | Pack | Vibe |
 | --- | --- |
 | `claude` _(default)_ | Calm, dry, competent-engineer-beside-you. Understated humor, never enthusiastic. |
 | `gigatron` | A genius AI quietly amused by humans — deep, wry, faintly metallic, calm menace under the humor. |
+| `good-boy` | Deep, slow, unhurried authority — approving rather than stern, never raised. |
 | `jay-run` | A second neutral voice, no character write-up yet — give it a listen. |
 | `mistress-of-pain` | Low, smoky, predatory calm — an amused, coldly curious hunter, not a seductress. |
+| `uncle-jim` | Loud, nasal, permanently exasperated — blunt as a brick, fond of you underneath. |
 
 Want your own? See "Make your own theme" below.
 
@@ -69,7 +71,7 @@ One command, the same on macOS, Windows and Linux:
 npx backtoyou
 ```
 
-You'll be asked to pick a voice pack — `claude`, `gigatron`, `jay-run`, or `mistress-of-pain` — with `claude` as the default if you just press Enter. Restart Claude Code. That's it.
+You'll be asked to pick a voice pack — `claude`, `gigatron`, `good-boy`, `jay-run`, `mistress-of-pain`, or `uncle-jim` — with `claude` as the default if you just press Enter. Restart Claude Code. That's it.
 
 Needs [Node.js](https://nodejs.org). Nothing else — no Homebrew, no `jq`, no Python, and no dependencies of its own.
 

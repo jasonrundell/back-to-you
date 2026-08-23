@@ -3,8 +3,8 @@ Back to You — audio asset license
 
 SCOPE
 
-This license covers every audio file under sounds/ — the 15 voice clips in
-sounds/claude/ and any other audio distributed with this repository.
+This license covers every audio file under sounds/ — the voice clips in every
+shipped pack and any other audio distributed with this repository.
 
 It does NOT cover the code, scripts, documentation, or artwork, which are MIT.
 See LICENSE.

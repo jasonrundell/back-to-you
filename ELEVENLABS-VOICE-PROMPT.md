@@ -36,7 +36,7 @@ voices fall apart on one-word lines. Save it as `Claude Code`.
 - Generate **each line as its own generation**, not one block cut up afterwards.
   The pacing stays even that way.
 
-## 3. The 3 clips
+## 3. The 4 clips
 
 Length matters: the `Stop` hook — `hooks/play-sound.js` on macOS and Linux,
 `hooks/play-sound.ps1` on Windows — blocks for the clip's real duration on _every_
@@ -55,9 +55,10 @@ Plays at the end of every response, so these need to be short and unremarkable.
 
 Rising, unresolved, slightly forward.
 
-| File                    | Text to speak              |
-| ----------------------- | -------------------------- |
-| `vo-waiting-on-you.mp3` | `[softly] Waiting on you.` |
+| File                      | Text to speak                |
+| ------------------------- | ---------------------------- |
+| `vo-waiting-on-you.mp3`   | `[softly] Waiting on you.`   |
+| `vo-question-for-you.mp3` | `[softly] Question for you.` |
 
 ### `error/`
 
