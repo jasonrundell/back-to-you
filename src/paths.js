@@ -11,6 +11,12 @@ const path = require('node:path');
 
 const IS_WINDOWS = process.platform === 'win32';
 
+/** The platform name as the CLI prints it in the "Installing..." line. */
+function platformName() {
+  if (IS_WINDOWS) return 'Windows';
+  return process.platform === 'darwin' ? 'macOS' : 'Linux';
+}
+
 /** Hook files installed on this platform, and how settings.json invokes them. */
 function hookFacts() {
   if (IS_WINDOWS) {
@@ -96,7 +102,7 @@ function packageSoundsDir() {
 }
 
 module.exports = {
-  IS_WINDOWS,
+  platformName,
   hookFacts,
   claudeDir,
   layout,

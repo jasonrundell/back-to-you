@@ -11,20 +11,33 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { mergeSettings, isOwnedCommand } = require('../src/settings');
-const { classifyRun, resolvePack, defaultPack, readChoice, planEffects } = require('../src/plan');
+const { classifyRun, resolvePack, defaultPack, readChoice, planEffects, uninstallGate, readConsent } = require('../src/plan');
 const { availablePacks, readInstallState, checkPack, runFullInstall, writeTheme } = require('../src/install');
 const { layout, hookFacts } = require('../src/paths');
+const { main } = require('../src/cli');
 
 let passed = 0;
+const pending = [];
 const test = (name, fn) => {
+  const report = (e) => {
+    if (e) {
+      console.error(`  FAIL  ${name}`);
+      console.error(`        ${e.message}`);
+      process.exitCode = 1;
+    } else {
+      passed++;
+      console.log(`  ok  ${name}`);
+    }
+  };
   try {
-    fn();
-    passed++;
-    console.log(`  ok  ${name}`);
+    const r = fn();
+    if (r && typeof r.then === 'function') {
+      pending.push(r.then(() => report(null), (e) => report(e)));
+      return;
+    }
+    report(null);
   } catch (e) {
-    console.error(`  FAIL  ${name}`);
-    console.error(`        ${e.message}`);
-    process.exitCode = 1;
+    report(e);
   }
 };
 
@@ -50,6 +63,22 @@ function seedPacks(root, names) {
 function seedHooks(dir, names) {
   fs.mkdirSync(dir, { recursive: true });
   for (const n of names) fs.writeFileSync(path.join(dir, n), '// stub hook\n');
+}
+
+/** A fake io for driving main() without a real terminal. isTTY is overridable per test. */
+function makeIO(answers = []) {
+  const out = [];
+  const errLines = [];
+  return {
+    io: {
+      out: (s = '') => out.push(s),
+      err: (s = '') => errLines.push(s),
+      ask: async () => (answers.length ? answers.shift() : ''),
+      isTTY: false,
+    },
+    out,
+    errLines,
+  };
 }
 
 console.log('\nplan');
@@ -112,6 +141,29 @@ test('an unknown pack names the pack, not a checkout path', () => {
   assert.equal(r.ok, false);
   assert.match(r.error, /No pack named "nope"/);
   assert.ok(!/\/sounds\//.test(r.error), 'must not name a filesystem path');
+});
+
+test('uninstallGate: --yes always proceeds, TTY or not', () => {
+  assert.equal(uninstallGate({ assumeYes: true, interactive: true }), 'proceed');
+  assert.equal(uninstallGate({ assumeYes: true, interactive: false }), 'proceed');
+});
+
+test('uninstallGate: no --yes and no terminal refuses', () => {
+  assert.equal(uninstallGate({ assumeYes: false, interactive: false }), 'refuse');
+});
+
+test('uninstallGate: no --yes but a terminal asks', () => {
+  assert.equal(uninstallGate({ assumeYes: false, interactive: true }), 'ask');
+});
+
+test('readConsent accepts y/yes, case-insensitively and trimmed', () => {
+  assert.equal(readConsent('y'), true);
+  assert.equal(readConsent('Y'), true);
+  assert.equal(readConsent('yes'), true);
+  assert.equal(readConsent('YES '), true);
+  assert.equal(readConsent(' n'), false);
+  assert.equal(readConsent(''), false);
+  assert.equal(readConsent('nope'), false);
 });
 
 console.log('\nsettings merge');
@@ -715,4 +767,209 @@ test('macOS uses afplay and nothing else', () => {
   assert.deepEqual(mac, ['afplay']);
 });
 
-console.log(`\n${passed} passed${process.exitCode ? ', with failures above' : ''}\n`);
+console.log('\ncli main (through a fake io, against sandbox roots)');
+
+test('main --help prints usage and exits 0', async () => {
+  const { io, out } = makeIO();
+  const code = await main(['--help'], io, {});
+  assert.equal(code, 0);
+  assert.ok(out.some((l) => l.includes('Back to You')), 'usage must be printed');
+  assert.ok(out.some((l) => l.includes('--uninstall')), 'usage must list --uninstall');
+});
+
+test('main --version prints just the package version and exits 0', async () => {
+  const { io, out } = makeIO();
+  const code = await main(['--version'], io, {});
+  assert.equal(code, 0);
+  assert.deepEqual(out, [require('../package.json').version]);
+});
+
+test('main rejects more than one pack name', async () => {
+  const { io, errLines } = makeIO();
+  const code = await main(['a', 'b'], io, {});
+  assert.equal(code, 1);
+  assert.ok(errLines.some((l) => l.includes('at most one pack name')));
+});
+
+test('uninstall refuses without a terminal, and leaves the sandbox untouched', async () => {
+  const root = sandbox();
+  const home = path.join(root, 'home', '.claude');
+  const paths = layout(home);
+  fs.mkdirSync(home, { recursive: true });
+  fs.writeFileSync(paths.themeFile, 'claude\n');
+  const before = fs.readdirSync(home).sort();
+
+  const { io, errLines } = makeIO();
+  const code = await main(['--uninstall'], io, { root: home });
+
+  assert.equal(code, 1);
+  assert.ok(errLines.some((l) => l.includes('not a terminal')));
+  assert.deepEqual(fs.readdirSync(home).sort(), before, 'nothing may be touched when it refuses');
+});
+
+test('uninstall declines and leaves everything in place', async () => {
+  const root = sandbox();
+  const home = path.join(root, 'home', '.claude');
+  const paths = layout(home);
+  fs.mkdirSync(home, { recursive: true });
+  fs.writeFileSync(paths.themeFile, 'claude\n');
+
+  const { io, out } = makeIO(['n']);
+  io.isTTY = true;
+  const code = await main(['--uninstall'], io, { root: home });
+
+  assert.equal(code, 0);
+  assert.ok(out.includes('Left alone.'));
+  assert.ok(fs.existsSync(paths.themeFile), 'declining must not remove anything');
+});
+
+test('uninstall with consent actually runs', async () => {
+  const root = sandbox();
+  const home = path.join(root, 'home', '.claude');
+  const paths = layout(home);
+  fs.mkdirSync(home, { recursive: true });
+  fs.writeFileSync(paths.themeFile, 'claude\n');
+
+  const { io } = makeIO(['y']);
+  io.isTTY = true;
+  const code = await main(['--uninstall'], io, { root: home });
+
+  assert.equal(code, 0);
+  assert.equal(fs.existsSync(paths.themeFile), false, 'consenting must remove the theme file');
+});
+
+test('uninstall on a root where nothing is installed says so', async () => {
+  const root = sandbox();
+  const home = path.join(root, 'home', '.claude');
+  const { io, out } = makeIO();
+  const code = await main(['--uninstall'], io, { root: home });
+  assert.equal(code, 0);
+  assert.ok(out.some((l) => l.includes('not installed')));
+});
+
+test('main fails when no voice packs are found', async () => {
+  const root = sandbox();
+  const src = path.join(root, 'empty-sounds');
+  fs.mkdirSync(src, { recursive: true });
+  const home = path.join(root, 'home', '.claude');
+
+  const { io, errLines } = makeIO();
+  const code = await main([], io, { root: home, sourceSounds: src });
+
+  assert.equal(code, 1);
+  assert.ok(errLines.some((l) => l.includes('no voice packs found')));
+});
+
+test('a non-interactive fresh install installs the default pack, claude', async () => {
+  const root = sandbox();
+  const src = path.join(root, 'src-sounds');
+  const hooks = path.join(root, 'src-hooks');
+  seedPacks(src, ['claude', 'gigatron']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  const home = path.join(root, 'home', '.claude');
+
+  const { io, out } = makeIO();
+  const code = await main([], io, { root: home, sourceSounds: src, sourceHooks: hooks });
+
+  assert.equal(code, 0);
+  assert.ok(out.some((l) => l.includes('Not a terminal')), 'the non-TTY note must be printed');
+  const okLines = out.filter((l) => l.trim().startsWith('ok'));
+  assert.ok(okLines.length > 0, 'the install steps must be rendered');
+  assert.ok(
+    okLines[okLines.length - 1].includes('Active pack set to claude'),
+    'the theme write is the last ok line'
+  );
+
+  const paths = layout(home);
+  assert.equal(fs.readFileSync(paths.themeFile, 'utf8').trim(), 'claude');
+});
+
+test('main is a no-op when the chosen pack is already active at this version', async () => {
+  const root = sandbox();
+  const src = path.join(root, 'src-sounds');
+  seedPacks(src, ['claude']);
+  const home = path.join(root, 'home', '.claude');
+  const paths = layout(home);
+  fs.mkdirSync(home, { recursive: true });
+  fs.writeFileSync(paths.themeFile, 'claude\n');
+  fs.writeFileSync(paths.versionFile, `${require('../package.json').version}\n`);
+
+  const { io, out } = makeIO();
+  const code = await main(['claude'], io, { root: home, sourceSounds: src });
+
+  assert.equal(code, 0);
+  assert.ok(out.some((l) => l.includes('Nothing to do')));
+});
+
+test('main switches packs without a full install', async () => {
+  const root = sandbox();
+  const src = path.join(root, 'src-sounds');
+  const hooks = path.join(root, 'src-hooks');
+  seedPacks(src, ['claude', 'gigatron']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  const home = path.join(root, 'home', '.claude');
+  const version = require('../package.json').version;
+  runFullInstall({ pack: 'claude', version, root: home, sourceSounds: src, sourceHooks: hooks });
+  const paths = layout(home);
+
+  const { io, out } = makeIO();
+  const code = await main(['gigatron'], io, { root: home, sourceSounds: src, sourceHooks: hooks });
+
+  assert.equal(code, 0);
+  assert.ok(out.some((l) => l.includes('Switched to')));
+  assert.equal(fs.readFileSync(paths.themeFile, 'utf8').trim(), 'gigatron');
+  assert.ok(!out.some((l) => l.includes('Hook scripts installed')), 'a switch must not do a full install');
+});
+
+test('a full install failure is reported honestly, and touches nothing extra', async () => {
+  const root = sandbox();
+  const src = path.join(root, 'src-sounds');
+  const hooks = path.join(root, 'src-hooks');
+  seedPacks(src, ['claude']);
+  const facts = hookFacts();
+  const required = [facts.soundHook, facts.categoryHook, ...(facts.support || [])];
+  seedHooks(hooks, required.slice(1)); // the first required hook file is missing
+  const home = path.join(root, 'home', '.claude');
+
+  const { io, errLines } = makeIO();
+  const code = await main([], io, { root: home, sourceSounds: src, sourceHooks: hooks });
+
+  assert.equal(code, 1);
+  assert.ok(errLines.some((l) => l.includes('Nothing has been changed.')));
+  assert.ok(!fs.existsSync(path.join(home, 'hooks')), 'nothing may be written when the pre-flight fails');
+});
+
+test('the interactive picker installs the chosen pack', async () => {
+  const root = sandbox();
+  const src = path.join(root, 'src-sounds');
+  const hooks = path.join(root, 'src-hooks');
+  seedPacks(src, ['claude', 'gigatron']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  const home = path.join(root, 'home', '.claude');
+
+  const { io } = makeIO(['2']);
+  io.isTTY = true;
+  const code = await main([], io, { root: home, sourceSounds: src, sourceHooks: hooks });
+
+  assert.equal(code, 0);
+  const paths = layout(home);
+  assert.equal(fs.readFileSync(paths.themeFile, 'utf8').trim(), 'gigatron', 'the 2nd listed pack must be chosen');
+});
+
+test('an out-of-range picker choice is rejected', async () => {
+  const root = sandbox();
+  const src = path.join(root, 'src-sounds');
+  seedPacks(src, ['claude', 'gigatron']);
+  const home = path.join(root, 'home', '.claude');
+
+  const { io, errLines } = makeIO(['99']);
+  io.isTTY = true;
+  const code = await main([], io, { root: home, sourceSounds: src });
+
+  assert.equal(code, 1);
+  assert.ok(errLines.some((l) => l.includes("isn't one of the choices")));
+});
+
+Promise.all(pending).then(() => {
+  console.log(`\n${passed} passed${process.exitCode ? ', with failures above' : ''}\n`);
+});
