@@ -124,9 +124,12 @@ function runUninstall({ root, sourceSounds } = {}) {
   // --- hook scripts -------------------------------------------------------
   // Every script this project has ever installed, not just the current
   // platform's: OWNED_SCRIPTS is the same list stripOwnedHooks unwires from
-  // settings.json, so the two halves cannot drift. play-lib.js is not in it -
-  // it is required by the hooks, never invoked as a command - so the
-  // platform's support files are added here.
+  // settings.json, so the two halves cannot drift. The shared libraries
+  // (play-lib.js, play-lib.ps1) are in it too - never invoked as commands,
+  // but listed so an uninstall on either platform removes the other
+  // platform's leftover lib from a ~/.claude that has moved between them.
+  // The current platform's support files are unioned in as well, so a new
+  // support file is removed even before it joins the list.
   const hookNames = new Set([...OWNED_SCRIPTS, ...(facts.support || [])]);
   for (const name of hookNames) {
     if (removeFile(path.join(paths.hooksDir, name))) removed.push(`hooks/${name}`);

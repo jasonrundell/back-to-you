@@ -69,6 +69,11 @@ function hookPlan(hooksDir, facts) {
 // pre-Node install unwires the old .sh entries instead of leaving both wired
 // and playing two clips. The .ps1 names are here for the same reason in
 // reverse - a user can move a ~/.claude between platforms.
+//
+// play-lib.js and play-lib.ps1 are installed but never named by any settings
+// entry - neither is ever wired as a command. They are listed here anyway so
+// that an uninstall on EITHER platform removes the other platform's leftover
+// lib, for the same move-a-~/.claude-between-platforms case as above.
 const OWNED_SCRIPTS = [
   'play-sound.sh',
   'play-category.sh',
@@ -78,6 +83,8 @@ const OWNED_SCRIPTS = [
   'play-sound-decision.ps1',
   'play-sound.js',
   'play-category.js',
+  'play-lib.js',
+  'play-lib.ps1',
 ];
 
 function isOwnedCommand(command) {
