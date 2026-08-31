@@ -213,28 +213,49 @@ async function main(argv) {
   out(`  Active pack: ${pack}`);
   out('');
 
-  let lines;
-  try {
-    lines = runFullInstall({
-      pack,
-      version: VERSION,
-      root: null,
-      log: (m) => err(m),
-    });
-  } catch (e) {
-    err(`ERROR: ${e.message}`);
-    err('Nothing else has been changed.');
+  const result = runFullInstall({ pack, version: VERSION, root: null });
+  result.steps.forEach((s) => out(`  ${renderStep(s)}`));
+
+  if (!result.ok) {
+    err(`ERROR: ${result.error}`);
+    if (result.steps.length === 0) {
+      err('Nothing has been changed.');
+    }
+    if (result.settingsRestored) {
+      err('Your settings.json has been restored from its backup.');
+    }
+    if (result.steps.length > 0) {
+      err('Copied files were left in place — running the installer again is safe.');
+    }
     return 1;
   }
-
-  writeTheme(pack, null);
-  lines.splice(1, 0, `ok  Active pack set to ${pack}`);
-  lines.forEach((l) => out(`  ${l}`));
 
   out('');
   out('All done. Restart Claude Code to activate sound notifications.');
   out('To switch packs later, run npx backtoyou again.');
   return 0;
+}
+
+/** Render one completed install step as the `ok  ...` line the CLI prints. */
+function renderStep(step) {
+  switch (step.kind) {
+    case 'packs-copied':
+      return 'ok  Sound packs copied';
+    case 'legacy-clips-removed':
+      return `ok  Removed ${step.count} retired subagent-done clip${step.count === 1 ? '' : 's'}`;
+    case 'hooks-installed':
+      return 'ok  Hook scripts installed';
+    case 'settings-backed-up':
+      return `ok  Backed up settings to ${step.backup}`;
+    case 'owned-entries-removed':
+      return `ok  Removed ${step.count} existing Back to You hook entr${step.count === 1 ? 'y' : 'ies'}`;
+    case 'settings-updated':
+      return 'ok  settings.json updated';
+    case 'theme-set':
+      return `ok  Active pack set to ${step.pack}`;
+    default:
+      return `ok  ${step.kind}`;
+  }
 }
 
 main(process.argv.slice(2))

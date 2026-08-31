@@ -319,8 +319,14 @@ test('a full install lands packs, hooks, theme and version', () => {
   seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
   const home = path.join(root, 'home', '.claude');
 
-  runFullInstall({ pack: 'claude', version: '1.2.0', root: home, sourceSounds: src, sourceHooks: hooks });
-  writeTheme('claude', home);
+  const result = runFullInstall({ pack: 'claude', version: '1.2.0', root: home, sourceSounds: src, sourceHooks: hooks });
+  assert.equal(result.ok, true);
+
+  const kinds = result.steps.map((s) => s.kind);
+  assert.ok(kinds.includes('packs-copied'));
+  assert.ok(kinds.includes('hooks-installed'));
+  assert.ok(kinds.includes('settings-updated'));
+  assert.equal(kinds[kinds.length - 1], 'theme-set', 'the theme write is the last step');
 
   const paths = layout(home);
   assert.ok(fs.existsSync(path.join(paths.soundsDir, 'claude', 'task-complete', 'clip.mp3')));
@@ -431,19 +437,50 @@ test('a missing hook script aborts before anything is written', () => {
   const src = path.join(root, 'src-sounds');
   const hooks = path.join(root, 'src-hooks');
   seedPacks(src, ['claude']);
-  seedHooks(hooks, ['play-sound.ps1']); // the Unix ones are absent
+  const facts = hookFacts();
+  const required = [facts.soundHook, facts.categoryHook, ...(facts.support || [])];
+  seedHooks(hooks, required.slice(1)); // the first required file is missing
   const home = path.join(root, 'home', '.claude');
 
-  const isWindows = process.platform === 'win32';
-  if (isWindows) {
-    console.log('        (skipped — needs the Unix hook set)');
-    return;
-  }
-  assert.throws(
-    () => runFullInstall({ pack: 'claude', version: '1.2.0', root: home, sourceSounds: src, sourceHooks: hooks }),
-    /Hook script missing/
-  );
+  const result = runFullInstall({ pack: 'claude', version: '1.2.0', root: home, sourceSounds: src, sourceHooks: hooks });
+  assert.equal(result.ok, false);
+  assert.equal(result.steps.length, 0);
+  assert.equal(result.settingsRestored, false);
+  assert.ok(result.error.includes(required[0]), 'error names the missing file');
+  assert.ok(!fs.existsSync(path.join(home, 'hooks')), 'nothing may be written before the check passes');
   assert.ok(!fs.existsSync(path.join(home, 'sounds')), 'nothing may be written before the check passes');
+});
+
+test('a mergeSettings failure restores settings.json from backup', () => {
+  const root = sandbox();
+  const src = path.join(root, 'src-sounds');
+  const hooks = path.join(root, 'src-hooks');
+  seedPacks(src, ['claude']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  const home = path.join(root, 'home', '.claude');
+  fs.mkdirSync(home, { recursive: true });
+
+  // mergeSettings refuses to clobber a settings.json it cannot parse.
+  const malformed = '{ this is not valid json';
+  fs.writeFileSync(path.join(home, 'settings.json'), malformed, 'utf8');
+
+  const result = runFullInstall({ pack: 'claude', version: '1.2.0', root: home, sourceSounds: src, sourceHooks: hooks });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.settingsRestored, true);
+
+  const kinds = result.steps.map((s) => s.kind);
+  assert.ok(kinds.includes('packs-copied'));
+  assert.ok(kinds.includes('hooks-installed'));
+  assert.ok(kinds.includes('settings-backed-up'));
+  assert.ok(!kinds.includes('settings-updated'));
+  assert.ok(!kinds.includes('theme-set'));
+
+  assert.equal(
+    fs.readFileSync(path.join(home, 'settings.json'), 'utf8'),
+    malformed,
+    'settings.json is restored to exactly what it was'
+  );
 });
 
 console.log('\nuninstall');
