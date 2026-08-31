@@ -80,7 +80,8 @@ Two format gates are mandatory rather than tidy:
 │   ├── play-category.js            # Unix, all fixed-category events
 │   ├── play-lib.js                 # shared by both; never invoked directly
 │   ├── play-sound.ps1              # Windows Stop
-│   └── play-category.ps1           # Windows, all fixed-category events
+│   ├── play-category.ps1           # Windows, all fixed-category events
+│   └── play-lib.ps1                # shared by both Windows hooks; dot-sourced, never invoked directly
 ├── sounds/                     # 23 mp3s: 6 packs x 3 wired categories, + 5 second takes
 │   ├── claude/                     # the default pack
 │   │   ├── task-complete/vo-back-to-you.mp3
@@ -100,7 +101,7 @@ Two format gates are mandatory rather than tidy:
 │       ├── issue-tracker.md    # issues live in GitHub Issues, via `gh`
 │       └── domain.md           # where the domain docs live
 └── tests/
-    ├── installer.test.js               # the suite: `npm test`, 70 named cases, no framework
+    ├── installer.test.js               # the suite: `npm test`, 77 named cases, no framework
     ├── verify-macos.sh                 # manual macOS release harness, run against a tarball
     └── Test-TaskCompleteRandomness.ps1 # Windows clip distribution, prints a table
 ```
@@ -137,7 +138,7 @@ Windows installs the `.ps1` hooks, macOS and Linux the `.js` ones. Everything el
 ├── hooks/
 │   ├── play-sound.js        |  play-sound.ps1
 │   ├── play-category.js     |  play-category.ps1
-│   └── play-lib.js          |  (Windows has no support file)
+│   └── play-lib.js          |  play-lib.ps1
 ├── settings.json
 ├── settings.json.bak.<timestamp>   # written before every merge and every uninstall
 ├── sound-theme.txt                 # one line naming the active pack
@@ -223,6 +224,10 @@ Shared by both Unix hooks: the active pack, random clip selection, playback, and
 The old `.sh` hooks duplicated this logic on purpose — a third file for the installer to keep in step, and the cost of a second process on a path that runs at the end of every response. The second reason does not survive the move to Node (`require` is in-process), and the first is worth paying once to avoid two copies of a five-player probe chain drifting apart.
 
 Playback blocks until the clip ends, which is how `afplay`, `pw-play` and `paplay` all behave natively; `spawnSync`'s timeout gives the six-second watchdog for free. A watchdog kill counts as success, because it means the clip *was* playing. When every candidate is missing or fails, `noteFailure()` writes the reason to `~/.claude/.backtoyou-playback-error` — overwritten rather than appended, since a broken setup would grow that file without bound. The PowerShell hooks write the same one-line file, so a mute install is diagnosable the same way on either platform.
+
+### `hooks/play-lib.ps1`
+
+The PowerShell mirror of `hooks/play-lib.js`, dot-sourced by both `play-sound.ps1` and `play-category.ps1` and never invoked directly. The Windows-only machinery — the theme read, clip pick, `Add-Type`, `Wait-Dispatcher`, and the whole `MediaPlayer` block — now lives here once instead of duplicated across both hooks; each hook keeps only its own header comment, the guarded dot-source, and, for `play-sound.ps1`, the classification regex. `Write-PlaybackError` writes the error file in the same byte format the Node lib uses — UTF-8, no BOM, a trailing newline — so `.backtoyou-playback-error` is diagnosable the same way regardless of which platform wrote it.
 
 ### `hooks/play-sound.js` and `hooks/play-sound.ps1`
 
@@ -317,9 +322,11 @@ Every hook exits quietly when its category folder is missing or empty. **Deletin
 
 ## Testing
 
-`npm test` runs `tests/installer.test.js`: 70 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
+`npm test` runs `tests/installer.test.js`: 77 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
 
 It covers the plan table (including `uninstallGate`/`readConsent`), the settings rewrite (including BOM round-tripping, third-party hook survival, and upgrading from a `.sh` install), install and uninstall effects, `Stop` classification against the PowerShell regex, and the player probe order. One test reads the **real** `~/.claude/settings.json` on the machine running it, if there is one, and asserts it survives a merge semantically intact.
+
+`play-lib.ps1` gets its own coverage: platform-independent structure guards assert both Windows hooks dot-source it and that neither references the `MediaPlayer`/`Wait-Dispatcher` machinery directly, plus three Windows-only tests that run `play-category.ps1` through real `powershell.exe` against a sandboxed `USERPROFILE` — a garbage clip, a deleted `play-lib.ps1`, and an empty category folder — and are skipped on every other platform.
 
 `src/cli.js`'s `main()` — the CLI's whole surface, `--help` through the interactive picker — is tested directly, not through a subprocess: a `makeIO()` helper builds a fake `io` that records every `out`/`err` line and answers `ask()` from a scripted queue, and each case points `opts.root` (and, where a full install is involved, `opts.sourceSounds`/`opts.sourceHooks`) at an `fs.mkdtempSync` sandbox. That is what `bin/cli.js` being a ~15-line adapter buys: the part that used to be 100% untested because it self-executed and could not be `require()`d now runs the same as everything else, in-process and without a real terminal.
 
@@ -331,7 +338,7 @@ Its upgrade step is seeded twice, because there are two populations to upgrade. 
 
 ## Maintenance Notes
 
-- **Change both hook implementations together.** `play-sound.js` and `play-sound.ps1` must classify identically, and `play-category.js` and `play-category.ps1` must behave identically. Everything *above* the hooks is now single-implementation, so this is the only place parity still has to be maintained by hand — and it is the most likely way this project breaks.
+- **Keep the classification regex in `play-sound.js` and `play-sound.ps1` in sync.** That is now the only hand-maintained parity between the two platforms' hooks — the playback machinery (theme read, clip pick, the error file, and on Windows the whole `MediaPlayer` block) lives once per platform, in `hooks/play-lib.js` and `hooks/play-lib.ps1`, so it cannot drift between `play-sound.*` and `play-category.*` on the same platform.
 - **Zero runtime dependencies is binding, not a preference.** `install.sh` and `install.bat` exec `node bin/cli.js` straight out of a clone or an unzipped folder, with no `npm install` first. Adding a dependency breaks both.
 - **Renaming a hook script means adding the old name to `OWNED_SCRIPTS`** in `src/settings.js`, or upgrading users keep the old entry wired alongside the new one and hear two clips. That list is also what `src/uninstall.js` deletes from `~/.claude/hooks`, so the two halves cannot drift.
 - **Retiring a clip means adding it to `LEGACY_CLIPS`** in `src/paths.js`, by exact relative path. Unwiring the event is only half the job — installing must take the audio off the machine too.

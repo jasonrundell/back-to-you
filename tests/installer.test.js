@@ -9,6 +9,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 const { mergeSettings, isOwnedCommand } = require('../src/settings');
 const { classifyRun, resolvePack, defaultPack, readChoice, planEffects, uninstallGate, readConsent } = require('../src/plan');
@@ -368,7 +369,7 @@ test('a full install lands packs, hooks, theme and version', () => {
   const src = path.join(root, 'src-sounds');
   const hooks = path.join(root, 'src-hooks');
   seedPacks(src, ['claude', 'gigatron']);
-  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1', 'play-lib.ps1']);
   const home = path.join(root, 'home', '.claude');
 
   const result = runFullInstall({ pack: 'claude', version: '1.2.0', root: home, sourceSounds: src, sourceHooks: hooks });
@@ -401,7 +402,7 @@ test('installing removes a retired subagent-done clip but keeps a user take', ()
   const src = path.join(root, 'src-sounds');
   const hooks = path.join(root, 'src-hooks');
   seedPacks(src, ['claude', 'gigatron']);
-  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1', 'play-lib.ps1']);
   const home = path.join(root, 'home', '.claude');
   const paths = layout(home);
 
@@ -439,7 +440,7 @@ test('installing one pack never deletes a custom one', () => {
   const src = path.join(root, 'src-sounds');
   const hooks = path.join(root, 'src-hooks');
   seedPacks(src, ['claude']);
-  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1', 'play-lib.ps1']);
   const home = path.join(root, 'home', '.claude');
 
   // A custom pack the user made, already on disk.
@@ -508,7 +509,7 @@ test('a mergeSettings failure restores settings.json from backup', () => {
   const src = path.join(root, 'src-sounds');
   const hooks = path.join(root, 'src-hooks');
   seedPacks(src, ['claude']);
-  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1', 'play-lib.ps1']);
   const home = path.join(root, 'home', '.claude');
   fs.mkdirSync(home, { recursive: true });
 
@@ -545,7 +546,7 @@ function freshInstall(names = ['claude', 'gigatron']) {
   const src = path.join(root, 'src-sounds');
   const hooks = path.join(root, 'src-hooks');
   seedPacks(src, names);
-  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1', 'play-lib.ps1']);
   const home = path.join(root, 'home', '.claude');
   runFullInstall({ pack: 'claude', version: '1.2.0', root: home, sourceSounds: src, sourceHooks: hooks });
   writeTheme('claude', home);
@@ -767,6 +768,129 @@ test('macOS uses afplay and nothing else', () => {
   assert.deepEqual(mac, ['afplay']);
 });
 
+console.log('\nwindows hooks (play-lib.ps1)');
+
+const HOOKS_SRC_DIR = path.join(__dirname, '..', 'hooks');
+const readHookSrc = (name) => fs.readFileSync(path.join(HOOKS_SRC_DIR, name), 'utf8');
+
+// --- structure guards: plain file reads, run on every platform -------------
+
+test('play-sound.ps1 and play-category.ps1 both dot-source play-lib.ps1 and exit 0', () => {
+  for (const name of ['play-sound.ps1', 'play-category.ps1']) {
+    const src = readHookSrc(name);
+    assert.match(src, /play-lib\.ps1/, `${name} must dot-source play-lib.ps1`);
+    assert.match(src, /exit 0/, `${name} must exit 0`);
+  }
+});
+
+test('neither hook script references the playback machinery directly', () => {
+  // Anti-drift tripwire: this machinery may exist only inside play-lib.ps1.
+  for (const name of ['play-sound.ps1', 'play-category.ps1']) {
+    const src = readHookSrc(name);
+    assert.ok(!src.includes('MediaPlayer'), `${name} must not reference MediaPlayer - it belongs in play-lib.ps1`);
+    assert.ok(!src.includes('Wait-Dispatcher'), `${name} must not define Wait-Dispatcher - it belongs in play-lib.ps1`);
+  }
+});
+
+test('play-lib.ps1 defines the shared functions and the watchdog constant', () => {
+  const src = readHookSrc('play-lib.ps1');
+  assert.match(src, /function Read-HookPayload/);
+  assert.match(src, /function Write-PlaybackError/);
+  assert.match(src, /function Play-CategoryClip/);
+  assert.match(src, /WatchdogMs/);
+});
+
+test('neither hook script guards stdin itself - that guard lives in the lib now', () => {
+  for (const name of ['play-sound.ps1', 'play-category.ps1']) {
+    const src = readHookSrc(name);
+    assert.ok(!src.includes('IsInputRedirected'), `${name} must not reference IsInputRedirected directly`);
+  }
+});
+
+// --- behavioral tests: real powershell.exe against a sandbox USERPROFILE ---
+// Windows only. These add several seconds to the suite on Windows; accepted
+// and deliberate, per the spec for this refactor.
+
+/** A fresh <sandbox>\.claude with play-category.ps1 + play-lib.ps1 installed and a theme file. */
+function windowsHookSandbox() {
+  const root = sandbox();
+  const hooksDir = path.join(root, '.claude', 'hooks');
+  fs.mkdirSync(hooksDir, { recursive: true });
+  fs.copyFileSync(path.join(HOOKS_SRC_DIR, 'play-category.ps1'), path.join(hooksDir, 'play-category.ps1'));
+  fs.copyFileSync(path.join(HOOKS_SRC_DIR, 'play-lib.ps1'), path.join(hooksDir, 'play-lib.ps1'));
+  fs.writeFileSync(path.join(root, '.claude', 'sound-theme.txt'), 'claude');
+  return {
+    root,
+    hooksDir,
+    errorFile: path.join(root, '.claude', '.backtoyou-playback-error'),
+    categoryDir: path.join(root, '.claude', 'sounds', 'claude', 'decision-needed'),
+  };
+}
+
+/** Runs play-category.ps1 -Category decision-needed with USERPROFILE pinned to the sandbox. */
+function runCategoryHook(sb) {
+  return spawnSync(
+    'powershell',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(sb.hooksDir, 'play-category.ps1'), '-Category', 'decision-needed'],
+    { env: { ...process.env, USERPROFILE: sb.root }, input: '', timeout: 30000 }
+  );
+}
+
+test('a garbage clip writes a BOM-less, newline-terminated error file', () => {
+  if (process.platform !== 'win32') {
+    console.log('        (skipped - Windows only)');
+    return;
+  }
+  const sb = windowsHookSandbox();
+  fs.mkdirSync(sb.categoryDir, { recursive: true });
+  fs.writeFileSync(path.join(sb.categoryDir, 'garbage.mp3'), 'this is not audio, just text bytes');
+
+  const r = runCategoryHook(sb);
+  assert.equal(r.status, 0, `hook must exit 0 even on a playback failure (stderr: ${r.stderr})`);
+
+  assert.ok(fs.existsSync(sb.errorFile), 'an error file must be written for an unplayable clip');
+  const buf = fs.readFileSync(sb.errorFile);
+  assert.notEqual(buf[0], 0xef, 'the error file must not carry a UTF-8 BOM');
+  const text = buf.toString('utf8');
+  assert.ok(text.endsWith('\n'), 'the error file must end with a trailing newline');
+  assert.ok(
+    text.includes('garbage.mp3') || text.includes('MediaFailed'),
+    `the error must name the clip or the failure mode, got: ${text}`
+  );
+});
+
+test('a missing play-lib.ps1 is reported by the guarded dot-source, and still exits 0', () => {
+  if (process.platform !== 'win32') {
+    console.log('        (skipped - Windows only)');
+    return;
+  }
+  const sb = windowsHookSandbox();
+  fs.unlinkSync(path.join(sb.hooksDir, 'play-lib.ps1'));
+  fs.mkdirSync(sb.categoryDir, { recursive: true });
+
+  const r = runCategoryHook(sb);
+  assert.equal(r.status, 0, `hook must exit 0 even when the lib is missing (stderr: ${r.stderr})`);
+
+  assert.ok(fs.existsSync(sb.errorFile), 'the guarded dot-source must report the missing lib itself');
+  assert.ok(
+    fs.readFileSync(sb.errorFile, 'utf8').includes('play-lib.ps1'),
+    'the error must name play-lib.ps1'
+  );
+});
+
+test('an empty category folder plays nothing and writes no error file', () => {
+  if (process.platform !== 'win32') {
+    console.log('        (skipped - Windows only)');
+    return;
+  }
+  const sb = windowsHookSandbox();
+  fs.mkdirSync(sb.categoryDir, { recursive: true });
+
+  const r = runCategoryHook(sb);
+  assert.equal(r.status, 0, `hook must exit 0 on an empty category (stderr: ${r.stderr})`);
+  assert.equal(fs.existsSync(sb.errorFile), false, 'an empty category folder is quiet, not an error');
+});
+
 console.log('\ncli main (through a fake io, against sandbox roots)');
 
 test('main --help prints usage and exits 0', async () => {
@@ -865,7 +989,7 @@ test('a non-interactive fresh install installs the default pack, claude', async 
   const src = path.join(root, 'src-sounds');
   const hooks = path.join(root, 'src-hooks');
   seedPacks(src, ['claude', 'gigatron']);
-  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1', 'play-lib.ps1']);
   const home = path.join(root, 'home', '.claude');
 
   const { io, out } = makeIO();
@@ -906,7 +1030,7 @@ test('main switches packs without a full install', async () => {
   const src = path.join(root, 'src-sounds');
   const hooks = path.join(root, 'src-hooks');
   seedPacks(src, ['claude', 'gigatron']);
-  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1', 'play-lib.ps1']);
   const home = path.join(root, 'home', '.claude');
   const version = require('../package.json').version;
   runFullInstall({ pack: 'claude', version, root: home, sourceSounds: src, sourceHooks: hooks });
@@ -944,7 +1068,7 @@ test('the interactive picker installs the chosen pack', async () => {
   const src = path.join(root, 'src-sounds');
   const hooks = path.join(root, 'src-hooks');
   seedPacks(src, ['claude', 'gigatron']);
-  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1']);
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1', 'play-lib.ps1']);
   const home = path.join(root, 'home', '.claude');
 
   const { io } = makeIO(['2']);
