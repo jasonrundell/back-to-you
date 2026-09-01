@@ -97,4 +97,34 @@ function planEffects({ install, chosen, version }) {
   };
 }
 
-module.exports = { classifyRun, resolvePack, defaultPack, readChoice, planEffects };
+/**
+ * Should an uninstall run proceed, refuse, or ask first?
+ *
+ * The uninstall prompt is the one confirmation in the CLI, and its non-TTY
+ * rule is deliberately the **opposite** of installing's: an install without a
+ * terminal proceeds and says so, because it is safe and idempotent, but a
+ * deletion that proceeds unasked in a script is how someone loses voice packs
+ * they made. `--uninstall` off a terminal fails unless `--yes` is passed.
+ *
+ * @returns {'proceed' | 'refuse' | 'ask'}
+ */
+function uninstallGate({ assumeYes, interactive }) {
+  if (assumeYes) return 'proceed';
+  if (!interactive) return 'refuse';
+  return 'ask';
+}
+
+/** Does an uninstall consent answer mean yes? */
+function readConsent(answer) {
+  return /^y(es)?$/i.test(String(answer).trim());
+}
+
+module.exports = {
+  classifyRun,
+  resolvePack,
+  defaultPack,
+  readChoice,
+  planEffects,
+  uninstallGate,
+  readConsent,
+};

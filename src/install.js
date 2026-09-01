@@ -98,14 +98,19 @@ function backupSettings(paths) {
 }
 
 /**
- * Copy packs and hooks, wire settings.json.
+ * Copy packs and hooks, wire settings.json, set the active pack.
  *
- * @returns {string[]} the `ok` lines to print
+ * Never throws. Effects are wrapped in try/catch so that any failure -
+ * expected (a bad settings.json) or not (an unexpected fs error) - comes
+ * back as `{ ok: false, ... }` rather than an exception the caller has to
+ * plan around.
+ *
+ * @returns {{ok: true, steps: object[]} | {ok: false, error: string, settingsRestored: boolean, steps: object[]}}
  */
-function runFullInstall({ pack, version, root, sourceSounds, sourceHooks, log }) {
+function runFullInstall({ pack, version, root, sourceSounds, sourceHooks }) {
   const paths = layout(root);
   const facts = hookFacts();
-  const lines = [];
+  const steps = [];
   const soundsFrom = sourceSounds || packageSoundsDir();
   const hooksFrom = sourceHooks || path.join(__dirname, '..', 'hooks');
 
@@ -119,54 +124,64 @@ function runFullInstall({ pack, version, root, sourceSounds, sourceHooks, log })
   // hooks just as completely while being far less obvious.
   for (const name of hookFiles) {
     if (!fs.existsSync(path.join(hooksFrom, name))) {
-      throw new Error(`Hook script missing from the package: hooks/${name}`);
+      return {
+        ok: false,
+        error: `Hook script missing from the package: hooks/${name}`,
+        settingsRestored: false,
+        steps: [],
+      };
     }
   }
 
-  fs.mkdirSync(paths.hooksDir, { recursive: true });
-  fs.mkdirSync(paths.soundsDir, { recursive: true });
-
-  // Every pack comes along, so installing one never deletes a custom one.
-  copyDir(soundsFrom, paths.soundsDir);
-  lines.push('ok  Sound packs copied');
-
-  // Copying never deletes, so a category this package has retired would sit
-  // in ~/.claude for ever otherwise - and play again the moment someone
-  // wired the event back by hand. Unwiring it is only half the job.
-  const legacy = removeLegacyClips(paths.soundsDir);
-  if (legacy > 0) {
-    lines.push(`ok  Removed ${legacy} retired subagent-done clip${legacy === 1 ? '' : 's'}`);
-  }
-
-  // The subagent-done marker, left behind by hooks older than 1.3.0.
   try {
-    fs.unlinkSync(paths.markerFile);
-  } catch { /* not there, which is the normal case */ }
+    fs.mkdirSync(paths.hooksDir, { recursive: true });
+    fs.mkdirSync(paths.soundsDir, { recursive: true });
 
-  for (const name of hookFiles) {
-    fs.copyFileSync(path.join(hooksFrom, name), path.join(paths.hooksDir, name));
-  }
-  lines.push('ok  Hook scripts installed');
+    // Every pack comes along, so installing one never deletes a custom one.
+    copyDir(soundsFrom, paths.soundsDir);
+    steps.push({ kind: 'packs-copied' });
 
-  const backup = backupSettings(paths);
-  if (backup) lines.push(`ok  Backed up settings to ${backup}`);
-
-  try {
-    const { removed } = mergeSettings(paths.settings, paths.hooksDir, facts);
-    if (removed > 0) {
-      lines.push(`ok  Removed ${removed} existing Back to You hook entr${removed === 1 ? 'y' : 'ies'}`);
+    // Copying never deletes, so a category this package has retired would sit
+    // in ~/.claude for ever otherwise - and play again the moment someone
+    // wired the event back by hand. Unwiring it is only half the job.
+    const legacy = removeLegacyClips(paths.soundsDir);
+    if (legacy > 0) {
+      steps.push({ kind: 'legacy-clips-removed', count: legacy });
     }
-    lines.push('ok  settings.json updated');
+
+    // The subagent-done marker, left behind by hooks older than 1.3.0.
+    try {
+      fs.unlinkSync(paths.markerFile);
+    } catch { /* not there, which is the normal case */ }
+
+    for (const name of hookFiles) {
+      fs.copyFileSync(path.join(hooksFrom, name), path.join(paths.hooksDir, name));
+    }
+    steps.push({ kind: 'hooks-installed' });
+
+    const backup = backupSettings(paths);
+    if (backup) steps.push({ kind: 'settings-backed-up', backup });
+
+    try {
+      const { removed } = mergeSettings(paths.settings, paths.hooksDir, facts);
+      if (removed > 0) {
+        steps.push({ kind: 'owned-entries-removed', count: removed });
+      }
+      steps.push({ kind: 'settings-updated' });
+    } catch (err) {
+      if (backup) fs.copyFileSync(backup, paths.settings);
+      return { ok: false, error: err.message, settingsRestored: Boolean(backup), steps };
+    }
+
+    fs.writeFileSync(paths.versionFile, `${version}\n`, 'utf8');
+
+    writeTheme(pack, root);
+    steps.push({ kind: 'theme-set', pack });
+
+    return { ok: true, steps };
   } catch (err) {
-    if (backup) {
-      fs.copyFileSync(backup, paths.settings);
-      if (log) log(`  Restored settings from ${backup}`);
-    }
-    throw err;
+    return { ok: false, error: err.message, settingsRestored: false, steps };
   }
-
-  fs.writeFileSync(paths.versionFile, `${version}\n`, 'utf8');
-  return lines;
 }
 
 /** A pack switch: one line in one file, nothing else. */

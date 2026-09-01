@@ -49,7 +49,7 @@ Two format gates are mandatory rather than tidy:
 ├── README.md
 ├── PROJECT_INDEX.md
 ├── CLAUDE.md                   # project rules for agents
-├── CONTEXT.md                  # not present yet; docs/agents/domain.md expects it here
+├── CONTEXT.md                  # the domain glossary; see docs/agents/domain.md
 ├── ELEVENLABS-VOICE-PROMPT.md  # persona prompt + per-clip script for the `claude` pack
 ├── LICENSE                     # MIT, code and docs
 ├── LICENSE-AUDIO               # non-commercial, everything under sounds/
@@ -67,8 +67,9 @@ Two format gates are mandatory rather than tidy:
 │   ├── demo.svg                # animated terminal demo in the README
 │   └── README-fragment.md      # the <picture> block and its rationale
 ├── bin/
-│   └── cli.js                  # the installer: arg parsing, the picker, the printed output
+│   └── cli.js                  # adapter: real io, process.exit, ~15 lines
 ├── src/
+│   ├── cli.js                  # arg parsing, the picker, the printed output - testable via a fake io
 │   ├── plan.js                 # pure planning - no I/O, no console
 │   ├── paths.js                # where things live, and what differs per platform
 │   ├── install.js              # the effects: copying, backing up, writing
@@ -99,7 +100,7 @@ Two format gates are mandatory rather than tidy:
 │       ├── issue-tracker.md    # issues live in GitHub Issues, via `gh`
 │       └── domain.md           # where the domain docs live
 └── tests/
-    ├── installer.test.js               # the suite: `npm test`, 51 named cases, no framework
+    ├── installer.test.js               # the suite: `npm test`, 70 named cases, no framework
     ├── verify-macos.sh                 # manual macOS release harness, run against a tarball
     └── Test-TaskCompleteRandomness.ps1 # Windows clip distribution, prints a table
 ```
@@ -108,7 +109,7 @@ Two format gates are mandatory rather than tidy:
 
 ## Runtime Flow
 
-`bin/cli.js` is the whole surface:
+`bin/cli.js` (the adapter) and `src/cli.js` (the tested body) together are the whole surface:
 
 ```text
 npx backtoyou             pick a voice pack, or switch the active one
@@ -121,8 +122,8 @@ npx backtoyou --uninstall remove it all again
 2. **Choose a pack.** A named argument wins. Otherwise, on a terminal, the numbered picker runs with the active pack as the default. Off a terminal — piped, CI — a fresh run takes `claude` and says so, while a re-run keeps whatever is already active rather than silently switching the pack of anyone automating a reinstall.
 3. **Pre-flight.** `checkPack()` requires the pack folder to exist, in the package or in `~/.claude/sounds/`, with clips in both `task-complete` and `decision-needed`. `error` is wired but not required — a pack without it is simply quiet on failures.
 4. **Classify the run.** `planEffects()` returns one of four kinds: `fresh`, `upgrade`, `switch`, `same`. Only `fresh` and `upgrade` do a full install; `switch` writes one line; `same` prints "Nothing to do" and exits.
-5. **Full install** (`runFullInstall`), in order: check every hook file exists in the package *before* writing anything; create `hooks/` and `sounds/`; copy every pack in; delete retired clips and the stale subagent marker; copy the platform's hook files; back `settings.json` up; rewrite our entries into it; write `.backtoyou-version`.
-6. **Write the active pack** to `sound-theme.txt`, and tell the user to restart Claude Code.
+5. **Full install** (`runFullInstall`), in order: check every hook file exists in the package *before* writing anything; create `hooks/` and `sounds/`; copy every pack in; delete retired clips and the stale subagent marker; copy the platform's hook files; back `settings.json` up; rewrite our entries into it; write `.backtoyou-version`; write the active pack to `sound-theme.txt`.
+6. **Report the outcome**, and tell the user to restart Claude Code.
 7. **At runtime**, Claude Code or Cowork runs the configured hooks. Each reads `sound-theme.txt` fresh, then plays a random clip from `sounds/<pack>/<category>/`.
 
 If the `settings.json` rewrite throws, the backup is copied back over it and the error is reported — the file is never left half-written, because the write itself goes to a temp file and is renamed into place.
@@ -164,17 +165,21 @@ User-facing pitch, installation, platform support, uninstall, and theming docume
 
 ### `bin/cli.js`
 
-Argument parsing, the interactive picker, the uninstall confirmation, and every line of printed output. It holds no rules of its own — it asks `src/plan.js` what should happen and `src/install.js` / `src/uninstall.js` to do it.
+The adapter, and nothing else: the shebang, the ADR comment, and the real `io` — `process.stdout`/`process.stderr` writers, a `readline`-backed `ask()`, `isTTY: Boolean(process.stdin.isTTY)` — handed to `src/cli.js`'s `main()`, followed by `process.exit`. About 15 lines, deliberately: it is the one file in the project that cannot be `require()`d and exercised by the test suite, because calling it runs the CLI, so everything that *can* be tested was moved out of it and into `src/cli.js`.
 
-The uninstall prompt is the one confirmation in the CLI, and its non-TTY rule is deliberately the **opposite** of installing's: an install without a terminal proceeds and says so, because it is safe and idempotent, but a deletion that proceeds unasked in a script is how someone loses voice packs they made. `--uninstall` off a terminal fails unless `--yes` is passed.
+### `src/cli.js`
+
+Argument parsing, the interactive picker, the uninstall confirmation, and every line of printed output. It holds no rules of its own — it asks `src/plan.js` what should happen and `src/install.js` / `src/uninstall.js` to do it. Exports a single `async function main(argv, io, opts = {})`: `io` supplies `out`/`err`/`ask`/`isTTY` so the module never touches `process.std*` or `readline` directly, and `opts` (`root`, `sourceSounds`, `sourceHooks`) is threaded down to `layout()`, `isInstalled()`, `availablePacks()`, `checkPack()`, `runFullInstall()`, `writeTheme()` and `runUninstall()` in place of the real `~/.claude` and the package's own `sounds/`/`hooks/`. `main` returns an exit code rather than calling `process.exit` itself, which is what makes it testable through a fake `io` against `fs.mkdtempSync` sandbox roots.
+
+The uninstall prompt is the one confirmation in the CLI, and its non-TTY rule is deliberately the **opposite** of installing's: an install without a terminal proceeds and says so, because it is safe and idempotent, but a deletion that proceeds unasked in a script is how someone loses voice packs they made. `--uninstall` off a terminal fails unless `--yes` is passed. The rule itself lives in `uninstallGate()` in `src/plan.js`; this module only acts on the `'proceed' | 'refuse' | 'ask'` it returns.
 
 ### `src/plan.js`
 
-Pure planning: no I/O, no console. Takes a description of the world and returns what should happen — `classifyRun`, `resolvePack`, `defaultPack`, `readChoice`, `planEffects`. It is pure so the decision table can be tested exhaustively without a filesystem, which is most of what `tests/installer.test.js` exercises.
+Pure planning: no I/O, no console. Takes a description of the world and returns what should happen — `classifyRun`, `resolvePack`, `defaultPack`, `readChoice`, `planEffects`, `uninstallGate`, `readConsent`. It is pure so the decision table can be tested exhaustively without a filesystem, which is most of what `tests/installer.test.js` exercises. `uninstallGate()` decides whether an uninstall run proceeds, refuses, or has to ask; `readConsent()` reads the `y`/`yes` answer to that ask.
 
 ### `src/paths.js`
 
-Every path under `~/.claude`, and `hookFacts()` — the one place that knows which hook files this platform installs and how `settings.json` invokes them. Windows gets `powershell -NoProfile -ExecutionPolicy Bypass -File "<path>"`; `-NoProfile` matters, or a user profile would run on every single response. Unix gets `node "<path>"`.
+Every path under `~/.claude`, `platformName()` (`'Windows' | 'macOS' | 'Linux'`, for the CLI's "Installing..." line), and `hookFacts()` — the one place that knows which hook files this platform installs and how `settings.json` invokes them. Windows gets `powershell -NoProfile -ExecutionPolicy Bypass -File "<path>"`; `-NoProfile` matters, or a user profile would run on every single response. Unix gets `node "<path>"`.
 
 **`node <path>` rather than a shebang plus `chmod +x`.** Without the execute bit a shebang hook is a silent no-op — nothing errors, there is simply never any sound — which this project treats as its worst failure mode. Naming the interpreter removes the failure mode rather than guarding against it.
 
@@ -184,6 +189,7 @@ It also carries the files this project no longer uses but still cleans up: `.sub
 
 Everything that touches disk on the way in. Notable choices:
 
+- **`runFullInstall()` never throws and returns typed step records**, not printed lines: `{ ok: true, steps }` on success, `{ ok: false, error, settingsRestored, steps }` on failure, with `steps` holding whatever effects actually completed before the failure. `src/cli.js` renders each step's `kind` into the `ok  ...` line it used to receive pre-formatted, and prints the completed steps even on failure, since those effects did happen.
 - **`availablePacks()` unions shipped packs with installed ones.** That is what keeps a custom pack visible under `npx`, where there is no checkout to hold it.
 - **Every hook file is checked to exist before anything is written**, including `play-lib.js`, which `settings.json` never names but both Unix hooks require. A missing support file would break the hooks just as completely while being far less obvious.
 - **All packs are copied, not just the chosen one**, so installing one never deletes a custom one.
@@ -311,9 +317,11 @@ Every hook exits quietly when its category folder is missing or empty. **Deletin
 
 ## Testing
 
-`npm test` runs `tests/installer.test.js`: 51 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
+`npm test` runs `tests/installer.test.js`: 70 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
 
-It covers the plan table, the settings rewrite (including BOM round-tripping, third-party hook survival, and upgrading from a `.sh` install), install and uninstall effects, `Stop` classification against the PowerShell regex, and the player probe order. One test reads the **real** `~/.claude/settings.json` on the machine running it, if there is one, and asserts it survives a merge semantically intact.
+It covers the plan table (including `uninstallGate`/`readConsent`), the settings rewrite (including BOM round-tripping, third-party hook survival, and upgrading from a `.sh` install), install and uninstall effects, `Stop` classification against the PowerShell regex, and the player probe order. One test reads the **real** `~/.claude/settings.json` on the machine running it, if there is one, and asserts it survives a merge semantically intact.
+
+`src/cli.js`'s `main()` — the CLI's whole surface, `--help` through the interactive picker — is tested directly, not through a subprocess: a `makeIO()` helper builds a fake `io` that records every `out`/`err` line and answers `ask()` from a scripted queue, and each case points `opts.root` (and, where a full install is involved, `opts.sourceSounds`/`opts.sourceHooks`) at an `fs.mkdtempSync` sandbox. That is what `bin/cli.js` being a ~15-line adapter buys: the part that used to be 100% untested because it self-executed and could not be `require()`d now runs the same as everything else, in-process and without a real terminal.
 
 `tests/verify-macos.sh` is the manual release harness: it takes a `npm pack` tarball, installs it into a sandboxed `HOME`, and walks cold install, playback, hook latency, pack switching, upgrade from an older install, uninstall, and the shims — printing a report to paste onto the release issue, with the checks a machine cannot make (is the clip *audible*, is it the *right* clip) called out to answer by ear.
 
