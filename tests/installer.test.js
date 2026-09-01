@@ -753,15 +753,8 @@ test('shippedClips enumerates by relative path', () => {
 
 console.log('\nhook classification (parity with play-sound.ps1 is checked below)');
 
-// play-lib resolves ~/.claude at require time, so the sandbox has to be in
-// place before these are loaded. Everything above this line has already run.
-const HOOK_HOME = sandbox();
-process.env.HOME = HOOK_HOME;
-process.env.USERPROFILE = HOOK_HOME;
-os.homedir = () => HOOK_HOME;
-
 const { classify } = require('../hooks/play-sound');
-const { PLAYERS } = require('../hooks/play-lib');
+const { PLAYERS, pickClip, play } = require('../hooks/play-lib');
 
 // The exact PowerShell pattern text, so it can be compared against both
 // sources rather than merely asserted about in prose.
@@ -1012,6 +1005,198 @@ test('an empty category folder plays nothing and writes no error file', () => {
   const r = runCategoryHook(sb);
   assert.equal(r.status, 0, `hook must exit 0 on an empty category (stderr: ${r.stderr})`);
   assert.equal(fs.existsSync(sb.errorFile), false, 'an empty category folder is quiet, not an error');
+});
+
+console.log('\nplay-lib behaviour (call-time home, probe chain)');
+
+// readPayload/drainStdin are stdin plumbing, not filesystem or probe-chain
+// logic, and are deliberately left untested here.
+
+const { main: categoryMain } = require('../hooks/play-category');
+
+/** Points HOME/USERPROFILE at root for the duration of fn, then restores both. */
+function withHome(root, fn) {
+  const savedHome = process.env.HOME;
+  const savedUserProfile = process.env.USERPROFILE;
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  try {
+    return fn();
+  } finally {
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    if (savedUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = savedUserProfile;
+  }
+}
+
+/** A fresh sandbox HOME with .claude/ already present, for tests that may write the error file. */
+function homeWithClaudeDir() {
+  const home = sandbox();
+  fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+  return home;
+}
+
+/** Seeds <root>/.claude/sounds/<pack>/<category>/ with one clip and returns its path. */
+function seedClip(root, pack, category, filename = 'clip.mp3') {
+  const dir = path.join(root, '.claude', 'sounds', pack, category);
+  fs.mkdirSync(dir, { recursive: true });
+  const clip = path.join(dir, filename);
+  fs.writeFileSync(clip, 'not really audio');
+  return clip;
+}
+
+/** A fake spawn for play(): records every (cmd, args) call and returns a canned result per command. */
+function fakeSpawn(results, calls = []) {
+  const spawn = (cmd, args) => {
+    calls.push([cmd, args]);
+    return results[cmd] || { error: { code: 'ENOENT' } };
+  };
+  spawn.calls = calls;
+  return spawn;
+}
+
+const ERROR_FILE_NAME = '.backtoyou-playback-error';
+
+test('pickClip reads the pack named by sound-theme.txt', () => {
+  const home = sandbox();
+  fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.claude', 'sound-theme.txt'), 'gigatron');
+  const clip = seedClip(home, 'gigatron', 'decision-needed');
+
+  withHome(home, () => {
+    assert.equal(pickClip('decision-needed'), clip);
+  });
+});
+
+test('pickClip falls back to claude when the theme file is missing', () => {
+  const home = sandbox();
+  const clip = seedClip(home, 'claude', 'decision-needed');
+
+  withHome(home, () => {
+    assert.equal(pickClip('decision-needed'), clip);
+  });
+});
+
+test('pickClip returns null for an empty category folder, and ignores non-audio files', () => {
+  const home = sandbox();
+  const dir = path.join(home, '.claude', 'sounds', 'claude', 'decision-needed');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'notes.txt'), 'not a clip');
+
+  withHome(home, () => {
+    assert.equal(pickClip('decision-needed'), null);
+  });
+});
+
+test('the probe chain tries players in order and falls through an ENOENT', () => {
+  const calls = [];
+  const spawn = fakeSpawn(
+    {
+      'pw-play': { error: { code: 'ENOENT' } },
+      paplay: { status: 0 },
+    },
+    calls
+  );
+
+  const home = sandbox();
+  const ok = withHome(home, () => play('x.mp3', { spawn, platform: 'linux' }));
+
+  assert.equal(ok, true);
+  assert.deepEqual(calls.map((c) => c[0]), ['pw-play', 'paplay']);
+});
+
+test('a watchdog timeout counts as success and writes no error file', () => {
+  const home = homeWithClaudeDir();
+  const spawn = fakeSpawn({ 'pw-play': { error: { code: 'ETIMEDOUT' } } });
+
+  const ok = withHome(home, () => play('x.mp3', { spawn, platform: 'linux' }));
+
+  assert.equal(ok, true);
+  assert.equal(fs.existsSync(path.join(home, '.claude', ERROR_FILE_NAME)), false);
+});
+
+test('an exhausted chain writes the error file', () => {
+  const home = homeWithClaudeDir();
+  const spawn = () => ({ status: 1 }); // every rung is present but fails
+
+  const ok = withHome(home, () => play('x.mp3', { spawn, platform: 'linux' }));
+
+  assert.equal(ok, false);
+  const errPath = path.join(home, '.claude', ERROR_FILE_NAME);
+  assert.ok(fs.existsSync(errPath), 'the error file must be written');
+  const text = fs.readFileSync(errPath, 'utf8');
+  assert.ok(text.includes('tried'), 'must explain that every rung was tried');
+  assert.ok(text.includes('pw-play(status 1)'), 'must name the first rung and its status');
+  assert.ok(text.endsWith('\n'), 'must end with a trailing newline');
+  assert.match(text, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/, 'must start with an ISO timestamp');
+  assert.ok(text.includes('clip='), 'must name the clip');
+});
+
+test('no candidate exists for the platform', () => {
+  const home = homeWithClaudeDir();
+  const spawn = fakeSpawn({});
+
+  const ok = withHome(home, () => play('x.mp3', { spawn, platform: 'win32' }));
+
+  assert.equal(ok, false);
+  assert.equal(spawn.calls.length, 0, 'nothing on Linux/darwin\'s player list should be probed for win32');
+  const text = fs.readFileSync(path.join(home, '.claude', ERROR_FILE_NAME), 'utf8');
+  assert.ok(text.includes('no usable player found on PATH'));
+});
+
+test('an mp3 probes mpg123 but not aplay', () => {
+  const home = homeWithClaudeDir();
+  const calls = [];
+  const spawn = fakeSpawn({}, calls); // everything ENOENT
+
+  withHome(home, () => play('clip.mp3', { spawn, platform: 'linux' }));
+
+  const cmds = calls.map((c) => c[0]);
+  assert.ok(cmds.includes('mpg123'), 'mpg123 handles mp3');
+  assert.ok(!cmds.includes('aplay'), 'aplay must be gated off mp3 - it renders it as noise');
+});
+
+test('a wav probes aplay but not mpg123', () => {
+  const home = homeWithClaudeDir();
+  const calls = [];
+  const spawn = fakeSpawn({}, calls); // everything ENOENT
+
+  withHome(home, () => play('clip.wav', { spawn, platform: 'linux' }));
+
+  const cmds = calls.map((c) => c[0]);
+  assert.ok(cmds.includes('aplay'), 'aplay handles wav');
+  assert.ok(!cmds.includes('mpg123'), 'mpg123 cannot play wav at all');
+});
+
+test('play-category main is callable directly and is quiet for an unknown category', () => {
+  const home = homeWithClaudeDir();
+
+  withHome(home, () => {
+    assert.doesNotThrow(() => categoryMain('no-such-category'));
+  });
+
+  assert.equal(fs.existsSync(path.join(home, '.claude', ERROR_FILE_NAME)), false);
+});
+
+test('play-category.js exits 0 with no args', () => {
+  const home = sandbox();
+  const r = spawnSync(process.execPath, [path.join(HOOKS_SRC_DIR, 'play-category.js')], {
+    env: { ...process.env, HOME: home, USERPROFILE: home },
+    input: '',
+    timeout: 15000,
+  });
+  assert.equal(r.status, 0, `must exit 0 with no args (stderr: ${r.stderr})`);
+});
+
+test('play-category.js exits 0 with a category arg against an empty sandbox', () => {
+  const home = sandbox();
+  const r = spawnSync(process.execPath, [path.join(HOOKS_SRC_DIR, 'play-category.js'), 'decision-needed'], {
+    env: { ...process.env, HOME: home, USERPROFILE: home },
+    input: '',
+    timeout: 15000,
+  });
+  assert.equal(r.status, 0, `must exit 0 with a category against an empty sandbox (stderr: ${r.stderr})`);
 });
 
 console.log('\ncli main (through a fake io, against sandbox roots)');

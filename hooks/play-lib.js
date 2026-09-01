@@ -14,8 +14,15 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 
-const CLAUDE_DIR = path.join(os.homedir(), '.claude');
-const ERROR_FILE = path.join(CLAUDE_DIR, '.backtoyou-playback-error');
+// Resolved per call, not at require: a hook process is short-lived so this
+// costs nothing, and it means a hook - or a test - always sees the current
+// home, not whatever os.homedir() answered when this module first loaded.
+function claudeDir() {
+  return path.join(os.homedir(), '.claude');
+}
+function errorFile() {
+  return path.join(claudeDir(), '.backtoyou-playback-error');
+}
 
 // A user can drop a three-minute file into a pack folder, and this runs at the
 // end of every single response.
@@ -55,7 +62,7 @@ const PLAYERS = [
 /** The active pack. One line of text, read fresh every time, so switching needs no restart. */
 function activeTheme() {
   try {
-    const t = fs.readFileSync(path.join(CLAUDE_DIR, 'sound-theme.txt'), 'utf8').trim();
+    const t = fs.readFileSync(path.join(claudeDir(), 'sound-theme.txt'), 'utf8').trim();
     if (t) return t;
   } catch { /* not installed, or unreadable */ }
   return 'claude';
@@ -63,7 +70,7 @@ function activeTheme() {
 
 /** A random clip from a category folder, or null when there is nothing to play. */
 function pickClip(category) {
-  const dir = path.join(CLAUDE_DIR, 'sounds', activeTheme(), category);
+  const dir = path.join(claudeDir(), 'sounds', activeTheme(), category);
   let files;
   try {
     files = fs
@@ -84,16 +91,22 @@ function pickClip(category) {
  * Blocking is required: the Stop hook must not return before the clip
  * finishes, which is how afplay, pw-play and paplay all behave natively.
  * spawnSync's timeout gives the watchdog for free.
+ *
+ * `deps` is an internal seam for the tests to inject a fake `spawn` and a
+ * chosen `platform` and drive the probe chain without touching a real
+ * player or process.platform; the hooks themselves pass nothing and get the
+ * real spawnSync/process.platform.
  */
-function play(clip) {
+function play(clip, deps = {}) {
+  const { spawn = spawnSync, platform = process.platform } = deps;
   const ext = path.extname(clip).toLowerCase();
   const tried = [];
 
   for (const p of PLAYERS) {
-    if (p.platform !== process.platform) continue;
+    if (p.platform !== platform) continue;
     if (!p.formats.includes(ext)) continue;
 
-    const r = spawnSync(p.cmd, [...p.args, clip], {
+    const r = spawn(p.cmd, [...p.args, clip], {
       timeout: WATCHDOG_MS,
       killSignal: 'SIGKILL',
       stdio: 'ignore',
@@ -123,7 +136,7 @@ function noteFailure(clip, tried) {
   const detail = tried.length ? `tried ${tried.join(', ')}` : 'no usable player found on PATH';
   try {
     fs.writeFileSync(
-      ERROR_FILE,
+      errorFile(),
       `${new Date().toISOString()}  ${detail}  clip=${clip}\n`,
       'utf8'
     );
@@ -157,10 +170,7 @@ function drainStdin() {
 }
 
 module.exports = {
-  CLAUDE_DIR,
-  ERROR_FILE,
   PLAYERS,
-  activeTheme,
   pickClip,
   play,
   readPayload,

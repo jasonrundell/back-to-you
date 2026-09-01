@@ -19,8 +19,7 @@
 
 const { pickClip, play, drainStdin } = require('./play-lib');
 
-function main() {
-  const category = process.argv[2];
+function main(category = process.argv[2]) {
   if (!category) return;
 
   drainStdin();
@@ -29,9 +28,15 @@ function main() {
   if (clip) play(clip);
 }
 
-try {
-  main();
-} catch {
-  // Deliberately swallowed. See the PreToolUse note at the top.
+// Guarded so the tests can require this file for `main` without the hook
+// firing and exiting the test process.
+if (require.main === module) {
+  try {
+    main();
+  } catch {
+    // Deliberately swallowed. See the PreToolUse note at the top.
+  }
+  process.exit(0);
 }
-process.exit(0);
+
+module.exports = { main };
