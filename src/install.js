@@ -6,10 +6,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { hookFacts, layout, packageSoundsDir } = require('./paths');
-const { mergeSettings } = require('./settings');
+const { mergeSettings, CATEGORIES } = require('./settings');
 const { removeLegacyClips } = require('./uninstall');
+const { DEFAULT_PACK } = require('./plan');
 
-const REQUIRED_CATEGORIES = ['task-complete', 'decision-needed'];
 const CLIP_EXTENSIONS = new Set(['.mp3', '.wav']);
 
 function dirsIn(dir) {
@@ -45,7 +45,9 @@ function availablePacks(paths, sourceDir) {
   const shipped = dirsIn(sourceDir || packageSoundsDir());
   const installed = dirsIn(paths.soundsDir);
   const all = new Set([...shipped, ...installed]);
-  return [...all].sort((a, b) => (a === 'claude' ? -1 : b === 'claude' ? 1 : a.localeCompare(b)));
+  return [...all].sort((a, b) =>
+    a === DEFAULT_PACK ? -1 : b === DEFAULT_PACK ? 1 : a.localeCompare(b)
+  );
 }
 
 /** Read what is currently installed. */
@@ -64,16 +66,34 @@ function readInstallState(paths) {
   return { installed: Boolean(activeTheme), activeTheme, version };
 }
 
-/** Pre-flight, matching the shell installers': the pack must exist and be usable. */
+/**
+ * Pre-flight, matching the shell installers': the pack must exist and be
+ * usable. A missing required category fails the pack outright; a missing
+ * optional one (currently just `error`) installs fine but is reported back
+ * as a warning, so the CLI can tell the user the pack will stay quiet on
+ * that category rather than saying nothing at all.
+ */
 function checkPack(pack, searchDirs) {
+  const required = CATEGORIES.filter((c) => c.required);
+  const optional = CATEGORIES.filter((c) => !c.required);
+
   for (const base of searchDirs) {
     const dir = path.join(base, pack);
     if (!fs.existsSync(dir)) continue;
-    const empty = REQUIRED_CATEGORIES.filter((c) => !hasClips(path.join(dir, c)));
-    if (empty.length > 0) {
-      return { ok: false, reason: `"${pack}" has no clips in: ${empty.join(', ')}` };
+
+    const missingRequired = required.filter((c) => !hasClips(path.join(dir, c.name)));
+    if (missingRequired.length > 0) {
+      return {
+        ok: false,
+        reason: `"${pack}" has no clips in: ${missingRequired.map((c) => c.name).join(', ')}`,
+      };
     }
-    return { ok: true, dir };
+
+    const warnings = optional
+      .filter((c) => !hasClips(path.join(dir, c.name)))
+      .map((c) => `"${pack}" has no clips in ${c.name} — it will stay silent ${c.whenSilent}.`);
+
+    return { ok: true, dir, warnings };
   }
   return { ok: false, reason: `No pack folder named "${pack}"` };
 }

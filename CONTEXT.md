@@ -13,7 +13,7 @@ The one voice pack the hooks currently play from. Switching it is a one-line cha
 _Avoid_: active theme, current theme
 
 **Category**:
-The kind of moment a clip announces: `task-complete`, `decision-needed`, or `error`. Each is a folder inside a pack.
+The kind of moment a clip announces: `task-complete`, `decision-needed`, or `error`. Each is a folder inside a pack. `task-complete` and `decision-needed` are required of every pack; `error` is optional — a pack without it installs, and stays quiet on failures.
 _Avoid_: event (that's the Claude Code hook trigger, not the sound's meaning)
 
 **Clip**:

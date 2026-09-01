@@ -178,6 +178,7 @@ async function main(argv, io, opts = {}) {
     io.err('Add at least one .mp3 or .wav to that folder and run this installer again.');
     return 1;
   }
+  check.warnings.forEach((w) => io.out(`note  ${w}`));
 
   const effects = planEffects({ install, chosen: pack, version: VERSION });
 
