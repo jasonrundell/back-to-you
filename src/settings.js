@@ -19,6 +19,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 /**
+ * The category vocabulary this project wires, in one place. `checkPack` in
+ * `src/install.js` reads `required` to decide what makes a pack unusable
+ * versus merely quiet, and `whenSilent` to word the warning for the rest.
+ */
+const CATEGORIES = [
+  { name: 'task-complete', required: true },   // Stop
+  { name: 'decision-needed', required: true }, // Stop, Notification, PreToolUse
+  // StopFailure. Optional: a pack without it installs, but stays quiet on
+  // failures - checkPack warns rather than failing, so user-made packs
+  // that never shipped error clips keep working.
+  { name: 'error', required: false, whenSilent: 'when a turn ends on an API error' },
+];
+
+/**
  * The four wired events.
  *
  * SessionStart is deliberately NOT wired. Matched even to `startup` alone it
@@ -235,4 +249,5 @@ module.exports = {
   hookPlan,
   isOwnedCommand,
   OWNED_SCRIPTS,
+  CATEGORIES,
 };

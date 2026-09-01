@@ -11,8 +11,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const { mergeSettings, isOwnedCommand } = require('../src/settings');
-const { classifyRun, resolvePack, defaultPack, readChoice, planEffects, uninstallGate, readConsent } = require('../src/plan');
+const { mergeSettings, isOwnedCommand, hookPlan, CATEGORIES } = require('../src/settings');
+const { classifyRun, resolvePack, defaultPack, readChoice, planEffects, uninstallGate, readConsent, DEFAULT_PACK } = require('../src/plan');
 const { availablePacks, readInstallState, checkPack, runFullInstall, writeTheme } = require('../src/install');
 const { layout, hookFacts } = require('../src/paths');
 const { main } = require('../src/cli');
@@ -323,6 +323,36 @@ test('isOwnedCommand recognises every script ever shipped', () => {
   assert.ok(!isOwnedCommand('"/x/somebody-elses.sh"'));
 });
 
+test('every category hookPlan wires is a name in CATEGORIES, and required matches classify()', () => {
+  const dummyHooksDir = path.join(os.tmpdir(), 'bty-dummy-hooks-dir');
+  const plan = hookPlan(dummyHooksDir, UNIX_FACTS);
+  const names = new Set(CATEGORIES.map((c) => c.name));
+
+  // A strict trailing-argument extraction: `... play-category.js" <category>`
+  // at the end of the command string. Fails loudly rather than silently
+  // matching nothing if the command shape ever changes.
+  const escapedHook = UNIX_FACTS.categoryHook.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const trailingCategory = new RegExp(`${escapedHook}"\\s+(\\S+)$`);
+
+  const categoryEntries = plan.filter((entry) => entry.command.includes(UNIX_FACTS.categoryHook));
+  assert.ok(categoryEntries.length > 0, 'expected at least one hookPlan entry to invoke the category hook');
+
+  for (const entry of categoryEntries) {
+    const match = entry.command.match(trailingCategory);
+    assert.ok(match, `could not extract a trailing category argument from ${entry.event}'s command: ${entry.command}`);
+    assert.ok(
+      names.has(match[1]),
+      `category "${match[1]}" wired for ${entry.event} is not in CATEGORIES`
+    );
+  }
+
+  assert.deepEqual(
+    CATEGORIES.filter((c) => c.required).map((c) => c.name),
+    ['task-complete', 'decision-needed'],
+    'these are the only two categories classify() can emit'
+  );
+});
+
 console.log('\nagainst the real settings.json on this machine');
 
 test('a real populated settings.json survives semantically intact', () => {
@@ -459,7 +489,7 @@ test('the picker sees custom packs already in ~/.claude/sounds', () => {
 
   const packs = availablePacks(layout(home), src);
   assert.deepEqual(packs, ['claude', 'gigatron', 'mytheme']);
-  assert.equal(packs[0], 'claude', 'claude sorts first');
+  assert.equal(packs[0], DEFAULT_PACK, 'the default pack sorts first');
 });
 
 test('readInstallState reports a pre-versioning install', () => {
@@ -476,13 +506,32 @@ test('readInstallState reports a pre-versioning install', () => {
 test('a pack with an empty required category is rejected', () => {
   const root = sandbox();
   const src = path.join(root, 'sounds');
-  seedPacks(src, ['good']);
+  seedPacks(src, ['good']); // seeded with all three categories
   fs.mkdirSync(path.join(src, 'bad', 'task-complete'), { recursive: true });
   fs.mkdirSync(path.join(src, 'bad', 'decision-needed'), { recursive: true });
-  assert.equal(checkPack('good', [src]).ok, true);
+  assert.deepEqual(
+    checkPack('good', [src]),
+    { ok: true, dir: path.join(src, 'good'), warnings: [] },
+    'a pack with clips in every wired category has no warnings'
+  );
   const bad = checkPack('bad', [src]);
   assert.equal(bad.ok, false);
   assert.match(bad.reason, /task-complete/);
+});
+
+test('checkPack warns, but does not fail, on a pack missing the optional error category', () => {
+  const root = sandbox();
+  const src = path.join(root, 'sounds');
+  const dir = path.join(src, 'quiet');
+  for (const c of ['task-complete', 'decision-needed']) {
+    fs.mkdirSync(path.join(dir, c), { recursive: true });
+    fs.writeFileSync(path.join(dir, c, 'clip.mp3'), 'not really audio');
+  }
+  const result = checkPack('quiet', [src]);
+  assert.equal(result.ok, true, 'a missing optional category must not fail the pack');
+  assert.equal(result.warnings.length, 1);
+  assert.match(result.warnings[0], /error/);
+  assert.match(result.warnings[0], /when a turn ends on an API error/);
 });
 
 test('a missing hook script aborts before anything is written', () => {
@@ -1080,6 +1129,27 @@ test('a non-interactive fresh install installs the default pack, claude', async 
 
   const paths = layout(home);
   assert.equal(fs.readFileSync(paths.themeFile, 'utf8').trim(), 'claude');
+});
+
+test('main prints a note when the chosen pack has no error clips', async () => {
+  const root = sandbox();
+  const src = path.join(root, 'src-sounds');
+  const hooks = path.join(root, 'src-hooks');
+  const quietDir = path.join(src, 'quiet');
+  for (const c of ['task-complete', 'decision-needed']) {
+    fs.mkdirSync(path.join(quietDir, c), { recursive: true });
+    fs.writeFileSync(path.join(quietDir, c, 'clip.mp3'), 'not really audio');
+  }
+  seedHooks(hooks, ['play-sound.js', 'play-category.js', 'play-lib.js', 'play-sound.ps1', 'play-category.ps1', 'play-lib.ps1']);
+  const home = path.join(root, 'home', '.claude');
+
+  const { io, out } = makeIO();
+  const code = await main(['quiet'], io, { root: home, sourceSounds: src, sourceHooks: hooks });
+
+  assert.equal(code, 0);
+  const noteLines = out.filter((l) => l.startsWith('note  '));
+  assert.equal(noteLines.length, 1, 'exactly one note line for the missing error category');
+  assert.match(noteLines[0], /error/);
 });
 
 test('main is a no-op when the chosen pack is already active at this version', async () => {

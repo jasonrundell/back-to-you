@@ -4,6 +4,13 @@
 // returns what should happen. Lifted from the session prototype on branch
 // prototype/npx-cli-session, which is where the CLI surface was settled (#26).
 
+// The pack a fresh, non-interactive install takes, and what a bare Enter on
+// the picker falls back to. The runtime hooks (hooks/play-lib.js,
+// hooks/play-lib.ps1) deliberately keep their own 'claude' fallback literals
+// rather than importing this - they run from ~/.claude, not from a checkout
+// of this package, and cannot require() an install-time module.
+const DEFAULT_PACK = 'claude';
+
 /**
  * Classify a run. Only `fresh` and `upgrade` take the full install path.
  *
@@ -50,8 +57,8 @@ function resolvePack({ packs, install, arg, interactive, picked }) {
       notes.push(`Not a terminal — keeping the active pack (${install.activeTheme}).`);
       return { ok: true, chosen: install.activeTheme, notes };
     }
-    notes.push('Not a terminal — installing the default pack (claude).');
-    return { ok: true, chosen: 'claude', notes };
+    notes.push(`Not a terminal — installing the default pack (${DEFAULT_PACK}).`);
+    return { ok: true, chosen: DEFAULT_PACK, notes };
   }
 
   if (picked === null || picked === undefined) {
@@ -63,7 +70,7 @@ function resolvePack({ packs, install, arg, interactive, picked }) {
 /** The pack a bare Enter accepts: whatever is active, else `claude`. */
 function defaultPack(packs, install) {
   if (install.installed && packs.includes(install.activeTheme)) return install.activeTheme;
-  return packs.includes('claude') ? 'claude' : packs[0];
+  return packs.includes(DEFAULT_PACK) ? DEFAULT_PACK : packs[0];
 }
 
 /** Validate a picker response. Returns a pack name, or null if out of range. */
@@ -120,6 +127,7 @@ function readConsent(answer) {
 }
 
 module.exports = {
+  DEFAULT_PACK,
   classifyRun,
   resolvePack,
   defaultPack,

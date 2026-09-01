@@ -101,7 +101,7 @@ Two format gates are mandatory rather than tidy:
 │       ├── issue-tracker.md    # issues live in GitHub Issues, via `gh`
 │       └── domain.md           # where the domain docs live
 └── tests/
-    ├── installer.test.js               # the suite: `npm test`, 76 named cases, no framework
+    ├── installer.test.js               # the suite: `npm test`, 79 named cases, no framework
     ├── verify-macos.sh                 # manual macOS release harness, run against a tarball
     └── Test-TaskCompleteRandomness.ps1 # Windows clip distribution, prints a table
 ```
@@ -121,7 +121,7 @@ npx backtoyou --uninstall remove it all again
 
 1. **Read the world.** `layout()` resolves every path under `~/.claude`; `readInstallState()` reads `sound-theme.txt` and `.backtoyou-version`; `availablePacks()` returns the shipped packs unioned with whatever is already under `~/.claude/sounds/`, `claude` first.
 2. **Choose a pack.** A named argument wins. Otherwise, on a terminal, the numbered picker runs with the active pack as the default. Off a terminal — piped, CI — a fresh run takes `claude` and says so, while a re-run keeps whatever is already active rather than silently switching the pack of anyone automating a reinstall.
-3. **Pre-flight.** `checkPack()` requires the pack folder to exist, in the package or in `~/.claude/sounds/`, with clips in both `task-complete` and `decision-needed`. `error` is wired but not required — a pack without it is simply quiet on failures.
+3. **Pre-flight.** `checkPack()` requires the pack folder to exist, in the package or in `~/.claude/sounds/`, with clips in both `task-complete` and `decision-needed`. `error` is wired but not required — a pack without it is simply quiet on failures, and the installer now says so: a `note  ...` line naming the category and when it would have fired.
 4. **Classify the run.** `planEffects()` returns one of four kinds: `fresh`, `upgrade`, `switch`, `same`. Only `fresh` and `upgrade` do a full install; `switch` writes one line; `same` prints "Nothing to do" and exits.
 5. **Full install** (`runFullInstall`), in order: check every hook file exists in the package *before* writing anything; create `hooks/` and `sounds/`; copy every pack in; delete retired clips and the stale subagent marker; copy the platform's hook files; back `settings.json` up; rewrite our entries into it; write `.backtoyou-version`; write the active pack to `sound-theme.txt`.
 6. **Report the outcome**, and tell the user to restart Claude Code.
@@ -193,6 +193,7 @@ Everything that touches disk on the way in. Notable choices:
 - **`runFullInstall()` never throws and returns typed step records**, not printed lines: `{ ok: true, steps }` on success, `{ ok: false, error, settingsRestored, steps }` on failure, with `steps` holding whatever effects actually completed before the failure. `src/cli.js` renders each step's `kind` into the `ok  ...` line it used to receive pre-formatted, and prints the completed steps even on failure, since those effects did happen.
 - **`availablePacks()` unions shipped packs with installed ones.** That is what keeps a custom pack visible under `npx`, where there is no checkout to hold it.
 - **Every hook file is checked to exist before anything is written**, including `play-lib.js`, which `settings.json` never names but both Unix hooks require. A missing support file would break the hooks just as completely while being far less obvious.
+- **`checkPack()` warns rather than fails on a missing optional category.** Only `task-complete` and `decision-needed` (`CATEGORIES` in `src/settings.js`) can reject a pack; a pack missing `error` still installs, with a warning `src/cli.js` prints as a `note  ...` line.
 - **All packs are copied, not just the chosen one**, so installing one never deletes a custom one.
 - **Retired clips are deleted on install.** Copying never deletes, so a category this package has retired would sit in `~/.claude` for ever otherwise — and play again the moment someone wired the event back by hand. Unwiring an event is only half of retiring it.
 - `copyDir` is hand-rolled rather than `fs.cpSync`, which still warns as experimental on Node 18 and 20.
@@ -200,6 +201,8 @@ Everything that touches disk on the way in. Notable choices:
 ### `src/settings.js`
 
 Reading and rewriting `settings.json`. A direct port of the deleted `tools/merge-settings.js` (JXA) and its PowerShell twin, both of which existed only because there was no JSON parser available at install time; the semantics are theirs and are deliberate.
+
+`CATEGORIES`, beside `hookPlan()`, owns the category vocabulary: `task-complete` and `decision-needed` are `required: true`, `error` is not — that flag is what `checkPack()` in `src/install.js` reads to decide fail versus warn.
 
 - **It rewrites rather than merges.** `stripOwnedHooks` removes every entry this project owns across every event, then the current plan is written back. That is what lets an upgrade correct an entry an older version got wrong, and what retires an event outright — `SubagentStop` was wired up to 1.2.0, and an upgrade unwires it with nothing asked of the user. An earlier version skipped any event that already had an entry, so none of those could ever be fixed.
 - **`OWNED_SCRIPTS` lists every script this project has ever installed**, on every platform: the `.sh` names so a pre-Node macOS install is unwired instead of left wired alongside the new entries, the `.ps1` names for the same reason in reverse, and `play-sound-decision.sh`, an early build's unmatched `Notification` hook that gave upgrading users two clips per prompt. A group holding a hook of the user's own is kept, minus ours; its matcher is theirs.
@@ -322,7 +325,7 @@ Every hook exits quietly when its category folder is missing or empty. **Deletin
 
 ## Testing
 
-`npm test` runs `tests/installer.test.js`: 76 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
+`npm test` runs `tests/installer.test.js`: 79 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
 
 It covers the plan table (including `uninstallGate`/`readConsent`), the settings rewrite (including BOM round-tripping, third-party hook survival, and upgrading from a `.sh` install), install and uninstall effects, and the player probe order. `Stop` classification parity with `play-sound.ps1` is checked rather than assumed: the classifier pattern is extracted from both `play-sound.js` and `play-sound.ps1` and asserted identical on every platform, and on Windows the shared fixture table is additionally run through the real .NET regex engine via `powershell.exe`. One test reads the **real** `~/.claude/settings.json` on the machine running it, if there is one, and asserts it survives a merge semantically intact.
 
