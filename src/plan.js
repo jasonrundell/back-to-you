@@ -29,23 +29,19 @@ function classifyRun({ install, chosen, version }) {
 /**
  * Which pack should this run activate, and what should be said about it?
  *
- * @returns {{ok: true, chosen: string, notes: string[]}
- *          | {ok: false, error: string, detail: string[]}}
+ * The DECISION of what to do is made here; the COPY that explains it to a
+ * human is not - that lives in `src/cli.js`, which renders `note`/`reason`
+ * into the printed lines. This module stays pure.
+ *
+ * @returns {{ok: true, chosen: string, note: null | {kind: 'non-tty-kept', pack: string} | {kind: 'non-tty-default', pack: string}}
+ *          | {ok: false, reason: {kind: 'unknown-pack', pack: string, packs: string[]} | {kind: 'nothing-chosen'}}}
  */
 function resolvePack({ packs, install, arg, interactive, picked }) {
-  const notes = [];
-
   if (arg !== null && arg !== undefined) {
     if (!packs.includes(arg)) {
-      return {
-        ok: false,
-        // install.sh names a path inside its own checkout here. Under npx
-        // there is no checkout, so the path would be a lie.
-        error: `No pack named "${arg}".`,
-        detail: ['Available packs:', ...packs.map((p) => `  ${p}`)],
-      };
+      return { ok: false, reason: { kind: 'unknown-pack', pack: arg, packs } };
     }
-    return { ok: true, chosen: arg, notes };
+    return { ok: true, chosen: arg, note: null };
   }
 
   if (!interactive) {
@@ -54,17 +50,15 @@ function resolvePack({ packs, install, arg, interactive, picked }) {
     // is already active - forcing `claude` here would silently switch the
     // pack of anyone automating a reinstall.
     if (install.installed) {
-      notes.push(`Not a terminal — keeping the active pack (${install.activeTheme}).`);
-      return { ok: true, chosen: install.activeTheme, notes };
+      return { ok: true, chosen: install.activeTheme, note: { kind: 'non-tty-kept', pack: install.activeTheme } };
     }
-    notes.push(`Not a terminal — installing the default pack (${DEFAULT_PACK}).`);
-    return { ok: true, chosen: DEFAULT_PACK, notes };
+    return { ok: true, chosen: DEFAULT_PACK, note: { kind: 'non-tty-default', pack: DEFAULT_PACK } };
   }
 
   if (picked === null || picked === undefined) {
-    return { ok: false, error: 'No pack chosen.', detail: [] };
+    return { ok: false, reason: { kind: 'nothing-chosen' } };
   }
-  return { ok: true, chosen: picked, notes };
+  return { ok: true, chosen: picked, note: null };
 }
 
 /** The pack a bare Enter accepts: whatever is active, else `claude`. */

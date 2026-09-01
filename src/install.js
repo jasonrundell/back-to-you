@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { hookFacts, layout, packageSoundsDir } = require('./paths');
-const { mergeSettings, CATEGORIES } = require('./settings');
+const { mergeSettings, backupSettingsFile, CATEGORIES } = require('./settings');
 const { removeLegacyClips } = require('./uninstall');
 const { DEFAULT_PACK } = require('./plan');
 
@@ -109,14 +109,6 @@ function copyDir(from, to) {
   }
 }
 
-function backupSettings(paths) {
-  if (!fs.existsSync(paths.settings)) return null;
-  const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
-  const backup = `${paths.settings}.bak.${stamp}`;
-  fs.copyFileSync(paths.settings, backup);
-  return backup;
-}
-
 /**
  * Copy packs and hooks, wire settings.json, set the active pack.
  *
@@ -179,7 +171,7 @@ function runFullInstall({ pack, version, root, sourceSounds, sourceHooks }) {
     }
     steps.push({ kind: 'hooks-installed' });
 
-    const backup = backupSettings(paths);
+    const backup = backupSettingsFile(paths.settings);
     if (backup) steps.push({ kind: 'settings-backed-up', backup });
 
     try {
@@ -217,5 +209,4 @@ module.exports = {
   checkPack,
   runFullInstall,
   writeTheme,
-  copyDir,
 };

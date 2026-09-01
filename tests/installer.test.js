@@ -129,19 +129,32 @@ test('a non-TTY re-run keeps the active pack rather than forcing claude', () => 
   });
   assert.equal(r.ok, true);
   assert.equal(r.chosen, 'gigatron');
+  assert.deepEqual(r.note, { kind: 'non-tty-kept', pack: 'gigatron' });
 });
 
 test('a non-TTY fresh install takes claude and announces it', () => {
   const r = resolvePack({ packs: ['claude'], install: { installed: false }, arg: null, interactive: false, picked: null });
   assert.equal(r.chosen, 'claude');
-  assert.match(r.notes.join(' '), /Not a terminal/);
+  assert.deepEqual(r.note, { kind: 'non-tty-default', pack: 'claude' });
 });
 
-test('an unknown pack names the pack, not a checkout path', () => {
+test('an unknown pack is reported as a typed reason, not rendered copy', () => {
   const r = resolvePack({ packs: ['claude'], install: { installed: false }, arg: 'nope', interactive: true, picked: null });
   assert.equal(r.ok, false);
-  assert.match(r.error, /No pack named "nope"/);
-  assert.ok(!/\/sounds\//.test(r.error), 'must not name a filesystem path');
+  assert.deepEqual(r.reason, { kind: 'unknown-pack', pack: 'nope', packs: ['claude'] });
+});
+
+test('an interactive run with nothing chosen is a typed reason', () => {
+  const r = resolvePack({ packs: ['claude'], install: { installed: false }, arg: null, interactive: true, picked: null });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.reason, { kind: 'nothing-chosen' });
+});
+
+test('a resolved arg or picked pack carries no note', () => {
+  const byArg = resolvePack({ packs: ['claude'], install: { installed: false }, arg: 'claude', interactive: true, picked: null });
+  assert.equal(byArg.note, null);
+  const byPick = resolvePack({ packs: ['claude'], install: { installed: false }, arg: null, interactive: true, picked: 'claude' });
+  assert.equal(byPick.note, null);
 });
 
 test('uninstallGate: --yes always proceeds, TTY or not', () => {
@@ -1290,6 +1303,25 @@ test('main fails when no voice packs are found', async () => {
 
   assert.equal(code, 1);
   assert.ok(errLines.some((l) => l.includes('no voice packs found')));
+});
+
+test('an unknown pack names the pack, not a checkout path', async () => {
+  const root = sandbox();
+  const src = path.join(root, 'src-sounds');
+  seedPacks(src, ['claude', 'gigatron']);
+  const home = path.join(root, 'home', '.claude');
+
+  const { io, errLines, out } = makeIO();
+  const code = await main(['nope'], io, { root: home, sourceSounds: src });
+
+  assert.equal(code, 1);
+  assert.ok(errLines.some((l) => l.includes('No pack named "nope"')));
+  assert.ok(errLines.some((l) => l.includes('Available packs:')));
+  const allLines = [...out, ...errLines];
+  assert.ok(
+    !allLines.some((l) => l.includes('/sounds/') || l.includes('\\sounds\\')),
+    'must not name a filesystem path'
+  );
 });
 
 test('a non-interactive fresh install installs the default pack, claude', async () => {

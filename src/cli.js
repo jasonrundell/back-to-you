@@ -165,11 +165,23 @@ async function main(argv, io, opts = {}) {
 
   const resolved = resolvePack({ packs, install, arg, interactive, picked });
   if (!resolved.ok) {
-    io.err(`ERROR: ${resolved.error}`);
-    resolved.detail.forEach((line) => io.err(line));
+    const { reason } = resolved;
+    if (reason.kind === 'unknown-pack') {
+      // install.sh names a path inside its own checkout here. Under npx
+      // there is no checkout, so the path would be a lie.
+      io.err(`ERROR: No pack named "${reason.pack}".`);
+      io.err('Available packs:');
+      reason.packs.forEach((p) => io.err(`  ${p}`));
+    } else {
+      io.err('ERROR: No pack chosen.');
+    }
     return 1;
   }
-  resolved.notes.forEach((n) => io.out(n));
+  if (resolved.note && resolved.note.kind === 'non-tty-kept') {
+    io.out(`Not a terminal — keeping the active pack (${resolved.note.pack}).`);
+  } else if (resolved.note && resolved.note.kind === 'non-tty-default') {
+    io.out(`Not a terminal — installing the default pack (${resolved.note.pack}).`);
+  }
 
   const pack = resolved.chosen;
   const check = checkPack(pack, [opts.sourceSounds || packageSoundsDir(), paths.soundsDir]);
