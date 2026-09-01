@@ -23,7 +23,8 @@ function hookFacts() {
     return {
       soundHook: 'play-sound.ps1',
       categoryHook: 'play-category.ps1',
-      support: [],
+      // Both Windows hooks dot-source this; it is never invoked directly.
+      support: ['play-lib.ps1'],
       // -File keeps arguments out of the parser, and -NoProfile matters: a
       // user profile would run on every single response.
       invoke: (p) => `powershell -NoProfile -ExecutionPolicy Bypass -File "${p}"`,
