@@ -100,15 +100,4 @@
     <circle class="ping p1 amber" cx="34" cy="290" r="5"/>
     <text class="mono amber" x="54" y="296">&#9834; &#8220;Back to you.&#8221;</text>
   </g>
-
-  <!-- then it needs you -->
-  <g class="l l8">
-    <circle class="dim" cx="34" cy="332" r="5"/>
-    <text class="mono ink" x="54" y="338">Want me to commit it?</text>
-  </g>
-
-  <g class="l l9">
-    <circle class="ping p2 amber" cx="34" cy="374" r="5"/>
-    <text class="mono amber" x="54" y="380">&#9834; &#8220;Waiting on you.&#8221;</text>
-  </g>
 </svg>
