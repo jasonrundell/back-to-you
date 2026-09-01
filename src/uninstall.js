@@ -12,33 +12,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { layout, hookFacts, ownedStateFiles, packageSoundsDir, LEGACY_CLIPS } = require('./paths');
-const { unwireSettings, OWNED_SCRIPTS } = require('./settings');
+const { unwireSettings, backupSettingsFile, OWNED_SCRIPTS } = require('./settings');
 
-/** Relative paths of every file this package ships under sounds/. */
-function shippedClips(sourceDir) {
-  const base = sourceDir || packageSoundsDir();
+/** Relative paths of every file under a directory, depth-first. `[]` if it cannot be read. */
+function filesUnder(dir) {
   const out = [];
-  const walk = (dir, rel) => {
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      const next = rel ? path.join(rel, e.name) : e.name;
-      if (e.isDirectory()) walk(path.join(dir, e.name), next);
-      else if (e.isFile()) out.push(next);
-    }
-  };
-  walk(base, '');
-  return out;
-}
-
-/** Count the files left under a directory. */
-function countFiles(dir) {
-  let n = 0;
-  const walk = (d) => {
+  const walk = (d, rel) => {
     let entries;
     try {
       entries = fs.readdirSync(d, { withFileTypes: true });
@@ -46,12 +25,23 @@ function countFiles(dir) {
       return;
     }
     for (const e of entries) {
-      if (e.isDirectory()) walk(path.join(d, e.name));
-      else n++;
+      const next = rel ? path.join(rel, e.name) : e.name;
+      if (e.isDirectory()) walk(path.join(d, e.name), next);
+      else if (e.isFile()) out.push(next);
     }
   };
-  walk(dir);
-  return n;
+  walk(dir, '');
+  return out;
+}
+
+/** Relative paths of every file this package ships under sounds/. */
+function shippedClips(sourceDir) {
+  return filesUnder(sourceDir || packageSoundsDir());
+}
+
+/** Count the files left under a directory. */
+function countFiles(dir) {
+  return filesUnder(dir).length;
 }
 
 /** Remove directories that are now empty, deepest first. Never removes `root` itself if it still holds anything. */
@@ -158,9 +148,7 @@ function runUninstall({ root, sourceSounds } = {}) {
   let backup = null;
   let unwired = 0;
   if (fs.existsSync(paths.settings)) {
-    const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
-    backup = `${paths.settings}.bak.${stamp}`;
-    fs.copyFileSync(paths.settings, backup);
+    backup = backupSettingsFile(paths.settings);
     try {
       unwired = unwireSettings(paths.settings).removed;
     } catch (err) {
@@ -174,9 +162,10 @@ function runUninstall({ root, sourceSounds } = {}) {
   // they are the recovery path if this went wrong.
   let backupsKept = [];
   try {
+    const prefix = `${path.basename(paths.settings)}.bak.`;
     backupsKept = fs
       .readdirSync(paths.claudeDir)
-      .filter((f) => f.startsWith('settings.json.bak.'));
+      .filter((f) => f.startsWith(prefix));
   } catch { /* no ~/.claude */ }
 
   return {
@@ -193,7 +182,5 @@ module.exports = {
   runUninstall,
   isInstalled,
   shippedClips,
-  countFiles,
-  pruneEmptyDirs,
   removeLegacyClips,
 };

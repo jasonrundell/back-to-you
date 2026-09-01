@@ -137,6 +137,24 @@ function stripOwnedHooks(hooks) {
 }
 
 /**
+ * Back settings.json up to a timestamped sibling, if it exists.
+ *
+ * The one place the backup filename is built - installing and uninstalling
+ * both call this rather than each rolling their own stamp, so the name
+ * (and the `settings.json.bak.` prefix uninstall's listing matches against)
+ * cannot drift between the two.
+ *
+ * @returns {string|null} the backup path, or null if there was nothing to back up
+ */
+function backupSettingsFile(settingsPath) {
+  if (!fs.existsSync(settingsPath)) return null;
+  const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  const backup = `${settingsPath}.bak.${stamp}`;
+  fs.copyFileSync(settingsPath, backup);
+  return backup;
+}
+
+/**
  * Read settings.json, hand the parsed config to `mutate`, write it back.
  *
  * Shared by installing and uninstalling so the delicate parts - BOM handling,
@@ -245,7 +263,7 @@ function writeAtomically(target, text) {
 module.exports = {
   mergeSettings,
   unwireSettings,
-  stripOwnedHooks,
+  backupSettingsFile,
   hookPlan,
   isOwnedCommand,
   OWNED_SCRIPTS,

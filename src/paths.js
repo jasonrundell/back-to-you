@@ -47,6 +47,8 @@ function claudeDir() {
   return path.join(os.homedir(), '.claude');
 }
 
+// Adding a state file here usually means listing it in `ownedStateFiles`
+// below too, or installing and uninstalling will not clean it up.
 function layout(root) {
   const base = root || claudeDir();
   return {
@@ -105,7 +107,6 @@ function packageSoundsDir() {
 module.exports = {
   platformName,
   hookFacts,
-  claudeDir,
   layout,
   ownedStateFiles,
   packageSoundsDir,

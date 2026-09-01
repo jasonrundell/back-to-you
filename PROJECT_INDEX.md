@@ -101,7 +101,7 @@ Two format gates are mandatory rather than tidy:
 │       ├── issue-tracker.md    # issues live in GitHub Issues, via `gh`
 │       └── domain.md           # where the domain docs live
 └── tests/
-    ├── installer.test.js               # the suite: `npm test`, 91 named cases, no framework
+    ├── installer.test.js               # the suite: `npm test`, 94 named cases, no framework
     ├── verify-macos.sh                 # manual macOS release harness, run against a tarball
     └── Test-TaskCompleteRandomness.ps1 # Windows clip distribution, prints a table
 ```
@@ -178,6 +178,8 @@ The uninstall prompt is the one confirmation in the CLI, and its non-TTY rule is
 
 Pure planning: no I/O, no console. Takes a description of the world and returns what should happen — `classifyRun`, `resolvePack`, `defaultPack`, `readChoice`, `planEffects`, `uninstallGate`, `readConsent`. It is pure so the decision table can be tested exhaustively without a filesystem, which is most of what `tests/installer.test.js` exercises. `uninstallGate()` decides whether an uninstall run proceeds, refuses, or has to ask; `readConsent()` reads the `y`/`yes` answer to that ask.
 
+**`resolvePack()` returns typed notes and reasons, not sentences** — `{ ok: true, chosen, note }` where `note` is `null` or `{ kind: 'non-tty-kept' | 'non-tty-default', pack }`, and `{ ok: false, reason }` where `reason` is `{ kind: 'unknown-pack', pack, packs }` or `{ kind: 'nothing-chosen' }`. `src/cli.js` renders every one of those into the printed lines. This was the one place presentation still lived in the pure planning module; it doesn't any more.
+
 ### `src/paths.js`
 
 Every path under `~/.claude`, `platformName()` (`'Windows' | 'macOS' | 'Linux'`, for the CLI's "Installing..." line), and `hookFacts()` — the one place that knows which hook files this platform installs and how `settings.json` invokes them. Windows gets `powershell -NoProfile -ExecutionPolicy Bypass -File "<path>"`; `-NoProfile` matters, or a user profile would run on every single response. Unix gets `node "<path>"`.
@@ -209,6 +211,7 @@ Reading and rewriting `settings.json`. A direct port of the deleted `tools/merge
 - **A UTF-8 BOM is stripped to parse and restored on write.** PowerShell 5.1 writes UTF-8 *with* BOM by default, so every `settings.json` the old `merge-settings.ps1` ever wrote is likely to carry one. `JSON.parse` rejects it outright, where the JXA and PowerShell readers both tolerated it. The file's encoding signature is the user's, not ours to normalise away.
 - **Every entry carries `timeout: 10`.** Claude Code's default for command hooks is ten minutes, which is no safety net at all for something attached to the end of every response.
 - Writes go to `<file>.tmp-<pid>` and are renamed into place. Events left empty are dropped, so unwiring an event does not leave `"SomeEvent": []` behind.
+- **`backupSettingsFile()` is the single place a `settings.json` backup is named.** Both `src/install.js` and `src/uninstall.js` call it rather than building the `.bak.<timestamp>` filename themselves, so the stamp and the `settings.json.bak.` prefix `src/uninstall.js`'s backup listing matches against cannot drift apart.
 
 `editSettings` is shared by installing and uninstalling, so the delicate parts — BOM handling, refusing to clobber a malformed file, the atomic write — exist once.
 
@@ -327,7 +330,7 @@ Every hook exits quietly when its category folder is missing or empty. **Deletin
 
 ## Testing
 
-`npm test` runs `tests/installer.test.js`: 91 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
+`npm test` runs `tests/installer.test.js`: 94 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
 
 It covers the plan table (including `uninstallGate`/`readConsent`), the settings rewrite (including BOM round-tripping, third-party hook survival, and upgrading from a `.sh` install), install and uninstall effects, and the player probe order. `Stop` classification parity with `play-sound.ps1` is checked rather than assumed: the classifier pattern is extracted from both `play-sound.js` and `play-sound.ps1` and asserted identical on every platform, and on Windows the shared fixture table is additionally run through the real .NET regex engine via `powershell.exe`. One test reads the **real** `~/.claude/settings.json` on the machine running it, if there is one, and asserts it survives a merge semantically intact.
 
