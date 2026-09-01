@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest # POSIX zip: the separator bug came from building on Windows
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # NO registry-url here, deliberately. That input makes setup-node write
       # "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" into a temp
@@ -42,7 +42,7 @@ jobs:
       # in". That is exactly how the v1.3.0 release failed. The default
       # registry is registry.npmjs.org anyway, so the input bought nothing.
       # See actions/setup-node#1551.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
 
