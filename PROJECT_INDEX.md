@@ -101,7 +101,7 @@ Two format gates are mandatory rather than tidy:
 │       ├── issue-tracker.md    # issues live in GitHub Issues, via `gh`
 │       └── domain.md           # where the domain docs live
 └── tests/
-    ├── installer.test.js               # the suite: `npm test`, 79 named cases, no framework
+    ├── installer.test.js               # the suite: `npm test`, 91 named cases, no framework
     ├── verify-macos.sh                 # manual macOS release harness, run against a tarball
     └── Test-TaskCompleteRandomness.ps1 # Windows clip distribution, prints a table
 ```
@@ -228,6 +228,8 @@ The old `.sh` hooks duplicated this logic on purpose — a third file for the in
 
 Playback blocks until the clip ends, which is how `afplay`, `pw-play` and `paplay` all behave natively; `spawnSync`'s timeout gives the six-second watchdog for free. A watchdog kill counts as success, because it means the clip *was* playing. When every candidate is missing or fails, `noteFailure()` writes the reason to `~/.claude/.backtoyou-playback-error` — overwritten rather than appended, since a broken setup would grow that file without bound. The PowerShell hooks write the same one-line file, so a mute install is diagnosable the same way on either platform.
 
+`~/.claude` is resolved per call (`claudeDir()`/`errorFile()`), not frozen at require time, so a long-lived process always sees the current home. `play()` takes its `spawnSync` and `process.platform` through an internal `deps` seam the hooks never populate; the tests use it to drive the probe chain's decisions behaviourally — ENOENT fall-through, a watchdog kill counting as success, the mp3/wav format gates, and the error file's shape — with an injected fake `spawn`, alongside the existing `PLAYERS` data-table assertions.
+
 ### `hooks/play-lib.ps1`
 
 The PowerShell mirror of `hooks/play-lib.js`, dot-sourced by both `play-sound.ps1` and `play-category.ps1` and never invoked directly. The Windows-only machinery — the theme read, clip pick, `Add-Type`, `Wait-Dispatcher`, and the whole `MediaPlayer` block — now lives here once instead of duplicated across both hooks; each hook keeps only its own header comment, the guarded dot-source, and, for `play-sound.ps1`, the classification regex. `Write-PlaybackError` writes the error file in the same byte format the Node lib uses — UTF-8, no BOM, a trailing newline — so `.backtoyou-playback-error` is diagnosable the same way regardless of which platform wrote it.
@@ -325,7 +327,7 @@ Every hook exits quietly when its category folder is missing or empty. **Deletin
 
 ## Testing
 
-`npm test` runs `tests/installer.test.js`: 79 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
+`npm test` runs `tests/installer.test.js`: 91 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
 
 It covers the plan table (including `uninstallGate`/`readConsent`), the settings rewrite (including BOM round-tripping, third-party hook survival, and upgrading from a `.sh` install), install and uninstall effects, and the player probe order. `Stop` classification parity with `play-sound.ps1` is checked rather than assumed: the classifier pattern is extracted from both `play-sound.js` and `play-sound.ps1` and asserted identical on every platform, and on Windows the shared fixture table is additionally run through the real .NET regex engine via `powershell.exe`. One test reads the **real** `~/.claude/settings.json` on the machine running it, if there is one, and asserts it survives a merge semantically intact.
 
