@@ -101,7 +101,7 @@ Two format gates are mandatory rather than tidy:
 │       ├── issue-tracker.md    # issues live in GitHub Issues, via `gh`
 │       └── domain.md           # where the domain docs live
 └── tests/
-    ├── installer.test.js               # the suite: `npm test`, 77 named cases, no framework
+    ├── installer.test.js               # the suite: `npm test`, 76 named cases, no framework
     ├── verify-macos.sh                 # manual macOS release harness, run against a tarball
     └── Test-TaskCompleteRandomness.ps1 # Windows clip distribution, prints a table
 ```
@@ -233,7 +233,7 @@ The PowerShell mirror of `hooks/play-lib.js`, dot-sourced by both `play-sound.ps
 
 Claude `Stop` hook. Reads the payload from standard input, checks whether `last_assistant_message` ends in a question, and plays either a decision-needed or a task-complete clip.
 
-Both test the whole message with `\?[^a-zA-Z0-9]*$` — a question mark followed only by non-alphanumerics, so `right?"` and `...ok?)` both count. **The two must stay byte-identical in behaviour**, and `tests/installer.test.js` asserts the Node half against the PowerShell regex explicitly.
+Both test the whole message with `\?[^a-zA-Z0-9]*$` — a question mark followed only by non-alphanumerics, so `right?"` and `...ok?)` both count. **The two must stay byte-identical in behaviour**, and `tests/installer.test.js` checks it rather than assuming it: the pattern is extracted from both sources and asserted identical on every platform, and on Windows a shared fixture table is additionally run through the real .NET regex engine and compared against `classify()`.
 
 The deleted `.sh` hook classified on the **last non-empty line** instead, because `grep` anchors `$` at the end of every line and testing the whole message there would have fired decision-needed for any multi-line answer merely containing a question. Node's regex has no such problem, so the Unix and Windows halves now agree by construction rather than by translation.
 
@@ -322,9 +322,9 @@ Every hook exits quietly when its category folder is missing or empty. **Deletin
 
 ## Testing
 
-`npm test` runs `tests/installer.test.js`: 77 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
+`npm test` runs `tests/installer.test.js`: 76 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
 
-It covers the plan table (including `uninstallGate`/`readConsent`), the settings rewrite (including BOM round-tripping, third-party hook survival, and upgrading from a `.sh` install), install and uninstall effects, `Stop` classification against the PowerShell regex, and the player probe order. One test reads the **real** `~/.claude/settings.json` on the machine running it, if there is one, and asserts it survives a merge semantically intact.
+It covers the plan table (including `uninstallGate`/`readConsent`), the settings rewrite (including BOM round-tripping, third-party hook survival, and upgrading from a `.sh` install), install and uninstall effects, and the player probe order. `Stop` classification parity with `play-sound.ps1` is checked rather than assumed: the classifier pattern is extracted from both `play-sound.js` and `play-sound.ps1` and asserted identical on every platform, and on Windows the shared fixture table is additionally run through the real .NET regex engine via `powershell.exe`. One test reads the **real** `~/.claude/settings.json` on the machine running it, if there is one, and asserts it survives a merge semantically intact.
 
 `play-lib.ps1` gets its own coverage: platform-independent structure guards assert both Windows hooks dot-source it and that neither references the `MediaPlayer`/`Wait-Dispatcher` machinery directly, plus three Windows-only tests that run `play-category.ps1` through real `powershell.exe` against a sandboxed `USERPROFILE` — a garbage clip, a deleted `play-lib.ps1`, and an empty category folder — and are skipped on every other platform.
 

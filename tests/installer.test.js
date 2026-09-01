@@ -702,7 +702,7 @@ test('shippedClips enumerates by relative path', () => {
   assert.equal(rels.length, 3, 'one per wired category');
 });
 
-console.log('\nhook classification (must match play-sound.ps1 exactly)');
+console.log('\nhook classification (parity with play-sound.ps1 is checked below)');
 
 // play-lib resolves ~/.claude at require time, so the sandbox has to be in
 // place before these are loaded. Everything above this line has already run.
@@ -714,32 +714,106 @@ os.homedir = () => HOOK_HOME;
 const { classify } = require('../hooks/play-sound');
 const { PLAYERS } = require('../hooks/play-lib');
 
-test('a trailing question mark means decision-needed', () => {
-  assert.equal(classify('Want me to push it?'), 'decision-needed');
+// The exact PowerShell pattern text, so it can be compared against both
+// sources rather than merely asserted about in prose.
+const CLASSIFIER_PATTERN = '\\?[^a-zA-Z0-9]*$';
+
+test('the classifier pattern text is identical in play-sound.ps1 and play-sound.js', () => {
+  const psSrc = fs.readFileSync(path.join(__dirname, '..', 'hooks', 'play-sound.ps1'), 'utf8');
+  const jsSrc = fs.readFileSync(path.join(__dirname, '..', 'hooks', 'play-sound.js'), 'utf8');
+
+  const psMatches = [...psSrc.matchAll(/\$lastMsg -match '([^']+)'/g)];
+  assert.equal(
+    psMatches.length,
+    1,
+    `could not locate the classifier line in play-sound.ps1 (expected exactly one "$lastMsg -match '...'", found ${psMatches.length})`
+  );
+  assert.equal(psMatches[0][1], CLASSIFIER_PATTERN, 'play-sound.ps1 classifier pattern has drifted from CLASSIFIER_PATTERN');
+
+  const jsMatches = [...jsSrc.matchAll(/return \/(.+?)\/\.test\(/g)];
+  assert.equal(
+    jsMatches.length,
+    1,
+    `could not locate the classifier line in play-sound.js (expected exactly one "return /..../.test(", found ${jsMatches.length})`
+  );
+  assert.equal(jsMatches[0][1], CLASSIFIER_PATTERN, 'play-sound.js classifier pattern has drifted from CLASSIFIER_PATTERN');
 });
 
-test('a question mark followed by punctuation still counts', () => {
-  // The PowerShell regex is '\?[^a-zA-Z0-9]*$' - `right?"` and `ok?)` count.
-  assert.equal(classify('You said "is it right?"'), 'decision-needed');
-  assert.equal(classify('(shall I?)'), 'decision-needed');
-  assert.equal(classify('Done?  '), 'decision-needed', 'trailing whitespace is trimmed first');
+// Shared between the JS-only assertion below and the Windows-only real-
+// PowerShell parity check further down.
+const FIXTURES = [
+  { message: 'Want me to push it?', expected: 'decision-needed' },
+  // `right?"` counts: a question mark followed only by non-alphanumerics.
+  { message: 'You said "is it right?"', expected: 'decision-needed' },
+  { message: '(shall I?)', expected: 'decision-needed' },
+  { message: 'Done?  ', expected: 'decision-needed' }, // trailing whitespace is trimmed first
+  // Trailing newline: the case where JS and .NET `$` semantics could diverge.
+  { message: 'Anything else?\n', expected: 'decision-needed' },
+  { message: 'That is finished.', expected: 'task-complete' },
+  { message: '', expected: 'task-complete' },
+  // The old sh hook took the last non-empty line to protect against grep,
+  // which anchors at the end of every line - a mid-message question must
+  // not count.
+  { message: 'Is it right? Yes. I pushed it.', expected: 'task-complete' },
+  { message: 'Should I?\nI went ahead and did it.', expected: 'task-complete' },
+  { message: 'Pushed the branch.\n\nAnything else?', expected: 'decision-needed' },
+];
+
+test('classify matches the fixture table', () => {
+  for (const { message, expected } of FIXTURES) {
+    assert.equal(classify(message), expected, `classify(${JSON.stringify(message)}) should be ${expected}`);
+  }
 });
 
-test('a statement means task-complete', () => {
-  assert.equal(classify('That is finished.'), 'task-complete');
-  assert.equal(classify(''), 'task-complete');
+test('a non-string message means task-complete', () => {
+  // JS-only: undefined can't cross into a PowerShell process for the parity check below.
   assert.equal(classify(undefined), 'task-complete');
 });
 
-test('a question mid-message does not count', () => {
-  // This is the case the sh hook took the last non-empty line to protect
-  // against, because grep anchors at the end of every line.
-  assert.equal(classify('Is it right? Yes. I pushed it.'), 'task-complete');
-  assert.equal(classify('Should I?\nI went ahead and did it.'), 'task-complete');
-});
+test('PowerShell -match agrees with classify() on every fixture', () => {
+  if (process.platform !== 'win32') {
+    console.log('        (skipped - Windows only)');
+    return;
+  }
 
-test('a question on the last line of a multi-line message counts', () => {
-  assert.equal(classify('Pushed the branch.\n\nAnything else?'), 'decision-needed');
+  // Extracted from the source, not CLASSIFIER_PATTERN, so a drifted .ps1
+  // pattern fails this test behaviourally too, not just textually.
+  const psSrc = fs.readFileSync(path.join(__dirname, '..', 'hooks', 'play-sound.ps1'), 'utf8');
+  const extracted = psSrc.match(/\$lastMsg -match '([^']+)'/);
+  assert.ok(extracted, 'could not locate the classifier line in play-sound.ps1');
+  const pattern = extracted[1];
+
+  const messages = FIXTURES.map((f) => f.message);
+  // Mirrors the hook's own decision exactly: no extra trimming.
+  const script = `
+$json = [Console]::In.ReadToEnd()
+$messages = ConvertFrom-Json -InputObject $json
+if ($messages -isnot [array]) { $messages = @($messages) }
+$results = foreach ($m in $messages) {
+  if ($m -match $env:BTY_PATTERN) { 'decision-needed' } else { 'task-complete' }
+}
+$results = @($results)
+$out = ConvertTo-Json -InputObject $results
+if ($results.Count -eq 1) { $out = "[$out]" }
+Write-Output $out
+`;
+  const r = spawnSync(
+    'powershell',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
+    { env: { ...process.env, BTY_PATTERN: pattern }, input: JSON.stringify(messages), timeout: 30000 }
+  );
+  assert.equal(r.status, 0, `powershell must exit 0 (stderr: ${r.stderr})`);
+
+  let verdicts = JSON.parse(r.stdout.toString('utf8'));
+  if (!Array.isArray(verdicts)) verdicts = [verdicts];
+
+  FIXTURES.forEach((f, i) => {
+    assert.equal(
+      verdicts[i],
+      classify(f.message),
+      `PowerShell and classify() disagree on ${JSON.stringify(f.message)}`
+    );
+  });
 });
 
 console.log('\nplayer probe order (settled by #25)');
