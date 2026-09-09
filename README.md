@@ -159,7 +159,7 @@ Installed before v1? Older builds also left `~/.claude/hooks/play-sound-decision
 <details>
 <summary><h2 style="display:inline">How it works</h2></summary>
 
-Claude Code [hooks](https://code.claude.com/docs/en/hooks) let you run a command when something happens. This installs two hook scripts and points four events at them.
+Claude Code [hooks](https://code.claude.com/docs/en/hooks) let you run a command when something happens. This installs two hook scripts and points three events at them.
 
 The hooks are **Node on macOS and Linux, PowerShell on Windows** — a split that looks odd until you see why. Everything Node buys here is a Unix problem: reading one field out of the hook payload without a JSON parser previously cost `plutil` plus a JavaScript-for-Automation fallback. Windows never had that problem, and it plays audio through a .NET assembly Node can't reach, so a Node hook there would have to launch PowerShell anyway — slower than just being PowerShell. Both implementations classify identically and share the same files in `~/.claude`.
 
@@ -172,12 +172,13 @@ Notification ──→ 🔊 "Waiting on you."
 | --- | --- | --- |
 | `Stop` | A response ends | `task-complete`, or `decision-needed` if the response ends in a question |
 | `Notification` | Claude asks for permission or input | `decision-needed` |
-| `PreToolUse` | Claude opens the multiple-choice picker | `decision-needed` |
 | `StopFailure` | A turn ends on an API error | `error` |
 
-`Notification` is matched to the types that are genuinely a request for input, and `PreToolUse` to `AskUserQuestion` — the picker has no notification type of its own, and would otherwise be the one decision-shaped moment that stays silent. `PostToolUseFailure` is deliberately left alone: it fires on every failed tool call, including a `grep` that finds nothing, and would buzz constantly.
+`Notification` is matched to the types that are genuinely a request for input. That includes the multiple-choice picker: Claude Code shows it as a permission dialog, and a permission dialog left open for six seconds raises a `permission_prompt` notification. `PostToolUseFailure` is deliberately left alone: it fires on every failed tool call, including a `grep` that finds nothing, and would buzz constantly.
 
 **`SubagentStop` is deliberately not wired**, and there is no subagent-done clip as of v1.3.0. A subagent finishing isn't a moment that wants you back — the turn is still running — and a turn that fans out to several of them announced every one, which got repetitive fast. The `Stop` clip at the end of the turn already covers it. Upgrading unwires the event and deletes the clip it used to play; a take you added to that folder yourself is kept, as always.
+
+**`PreToolUse` on `AskUserQuestion` is no longer wired**, as of v1.5.1. It was added on the belief that the picker had no notification of its own; it does, and the two together played the decision clip twice per question, a few seconds apart. Reinstalling removes the entry.
 
 **`SessionStart` is deliberately not wired**, and there is no startup greeting. Earlier versions wired it, matched to `startup` so it wouldn't replay on `/clear` or after a compaction. That wasn't enough: `startup` means every new *session*, not every app launch, and short-lived sessions are common. Measured over a six-hour run it fired about four times an hour and accounted for **69% of every sound heard**, in bursts as tight as four in 43 seconds. It was also the least useful of the set — a session starting is the one moment you're already looking at the terminal, which is exactly what `task-complete` and `decision-needed` are for. Reinstalling removes the hook from an existing install.
 

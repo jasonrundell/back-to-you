@@ -127,8 +127,9 @@ printf '%s' '{"last_assistant_message":"All done."}' | eval "$CMD"
 # Two shapes, because there are two populations. The .sh install is v1.1.1 and
 # earlier: clone-only, no package.json, never on npm. 1.2.0 is the Node CLI and
 # the only version npm has ever served, so 5b is the upgrade nearly every real
-# user takes. Both wired SubagentStop, which is retired now, so both have to
-# come out of it with four entries and no subagent-done anywhere.
+# user takes. Both wired SubagentStop, which is retired now, and 5b also wires
+# PreToolUse, retired as of 1.5.1, so both have to come out of it with three
+# entries and no subagent-done anywhere.
 
 hdr '5a. Upgrade from the old .sh install - clone-only, v1.1.1 and earlier'
 # tools/merge-settings.js at v1.1.1 really did wire SubagentStop to
@@ -161,7 +162,7 @@ console.log((c.model === "claude-opus-5" ? "  PASS  " : "  FAIL  ") + "unrelated
 console.log((c.env && c.env.KEEP_ME === "yes" ? "  PASS  " : "  FAIL  ") + "nested config preserved");
 console.log((stale.length === 0 ? "  PASS  " : "  FAIL  ") + "no stale .sh entries (" + stale.length + ")");
 console.log((mine.length === 1 ? "  PASS  " : "  FAIL  ") + "third-party hook untouched");
-console.log((ours.length === 4 ? "  PASS  " : "  FAIL  ") + "four Back to You entries wired (" + ours.length + ")");
+console.log((ours.length === 3 ? "  PASS  " : "  FAIL  ") + "three Back to You entries wired (" + ours.length + ")");
 '
 
 hdr '5b. Upgrade from 1.2.0 - the npm install every current user is on'
@@ -204,12 +205,14 @@ const all = Object.values(c.hooks).flatMap(g => g.flatMap(x => x.hooks.map(h => 
 const mine = all.filter(x => x.includes("my-own-hook"));
 const ours = all.filter(x => x.includes("play-sound.js") || x.includes("play-category.js"));
 const ss = c.hooks.SubagentStop;
+const ptu = c.hooks.PreToolUse;
 console.log((c.model === "claude-opus-5" ? "  PASS  " : "  FAIL  ") + "unrelated config preserved");
 console.log((c.env && c.env.KEEP_ME === "yes" ? "  PASS  " : "  FAIL  ") + "nested config preserved");
 console.log((mine.length === 1 ? "  PASS  " : "  FAIL  ") + "third-party hook untouched");
-console.log((ours.length === 4 ? "  PASS  " : "  FAIL  ") + "four Back to You entries wired (" + ours.length + ")");
+console.log((ours.length === 3 ? "  PASS  " : "  FAIL  ") + "three Back to You entries wired (" + ours.length + ")");
 console.log((!all.some(x => x.includes("subagent-done")) ? "  PASS  " : "  FAIL  ") + "nothing wired to subagent-done any more");
 console.log((!ss || ss.length === 0 ? "  PASS  " : "  FAIL  ") + "SubagentStop unwired");
+console.log((!ptu || ptu.length === 0 ? "  PASS  " : "  FAIL  ") + "PreToolUse unwired");
 '
 
 # --- 6. uninstall ----------------------------------------------------------

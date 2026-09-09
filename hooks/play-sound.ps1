@@ -2,8 +2,8 @@
 try {
     . "$PSScriptRoot\play-lib.ps1"
 } catch {
-    # The one failure the lib cannot report itself. Exit 0 regardless: on
-    # PreToolUse a non-zero exit would block the tool call outright.
+    # The one failure the lib cannot report itself. Exit 0 regardless: a
+    # non-zero exit surfaces a hook error in the transcript.
     try {
         $ts = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
         [System.IO.File]::WriteAllText("$env:USERPROFILE\.claude\.backtoyou-playback-error", "$ts  play-lib.ps1 missing or failed to load: $($_.Exception.Message)`n", (New-Object System.Text.UTF8Encoding($false)))

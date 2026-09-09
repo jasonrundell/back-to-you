@@ -17,8 +17,10 @@ param(
 try {
     . "$PSScriptRoot\play-lib.ps1"
 } catch {
-    # The one failure the lib cannot report itself. Exit 0 regardless: on
-    # PreToolUse a non-zero exit would block the tool call outright.
+    # The one failure the lib cannot report itself. Exit 0 regardless: nothing
+    # wired today can block on this hook's exit code, but a PreToolUse hook
+    # could (exit 2 blocks the tool call), and this script was attached to
+    # one until 1.5.1. Cheap insurance against it being wired there again.
     try {
         $ts = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
         [System.IO.File]::WriteAllText("$env:USERPROFILE\.claude\.backtoyou-playback-error", "$ts  play-lib.ps1 missing or failed to load: $($_.Exception.Message)`n", (New-Object System.Text.UTF8Encoding($false)))
@@ -32,8 +34,9 @@ $null = Read-HookPayload
 
 Play-CategoryClip $Category
 
-# Always exit 0, explicitly. This script is attached to PreToolUse, where an
-# exit code of 2 means "block this tool call" - a hook that failed noisily here
-# would stop Claude from asking the question at all. Without an explicit exit
-# the process inherits whatever $LASTEXITCODE happened to be.
+# Always exit 0, explicitly. Nothing wired today can block on this hook's
+# exit code, but a PreToolUse hook could (exit 2 blocks the tool call), and
+# this script was attached to one until 1.5.1 - cheap insurance against it
+# being wired there again. Without an explicit exit the process inherits
+# whatever $LASTEXITCODE happened to be.
 exit 0

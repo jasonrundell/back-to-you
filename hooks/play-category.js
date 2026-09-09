@@ -13,9 +13,10 @@
 // empty. That is the supported way to switch a sound off: delete the clips you
 // do not want.
 //
-// IMPORTANT: this is wired to PreToolUse, where exit code 2 means "block this
-// tool call". A hook that exits non-zero here stops Claude from asking the
-// question at all. Every path below must exit 0.
+// Always exits 0. Nothing wired today can block on this hook's exit code,
+// but PreToolUse hooks can (exit 2 blocks the tool call) and this script was
+// attached to one until 1.5.1. Keeping every path at exit 0 is cheap
+// insurance against it being wired there again.
 
 const { pickClip, play, drainStdin } = require('./play-lib');
 
@@ -34,7 +35,7 @@ if (require.main === module) {
   try {
     main();
   } catch {
-    // Deliberately swallowed. See the PreToolUse note at the top.
+    // Deliberately swallowed. See the exit-0 note at the top.
   }
   process.exit(0);
 }

@@ -159,8 +159,10 @@ function readPayload() {
  * Drain stdin without parsing it.
  *
  * Claude Code writes JSON to this process's stdin; leaving it unread risks
- * blocking the writer once a payload outgrows the pipe buffer, and PreToolUse
- * - the largest payload wired here - is the one that can.
+ * blocking the writer once a payload outgrows the pipe buffer. The
+ * Notification and Stop payloads wired today are small, but the drain stays
+ * because a future event could outgrow the pipe buffer - PreToolUse, which
+ * carries the full tool input, is the obvious candidate.
  */
 function drainStdin() {
   if (process.stdin.isTTY) return;

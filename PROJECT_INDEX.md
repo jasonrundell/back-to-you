@@ -96,12 +96,13 @@ Two format gates are mandatory rather than tidy:
 │   └── uncle-jim/                  # same shape, plus elevenlabs-prompt.md
 ├── docs/
 │   ├── adr/
-│   │   └── 0001-node-as-a-hard-requirement.md
+│   │   ├── 0001-node-as-a-hard-requirement.md
+│   │   └── 0002-the-picker-is-a-permission-prompt.md
 │   └── agents/
 │       ├── issue-tracker.md    # issues live in GitHub Issues, via `gh`
 │       └── domain.md           # where the domain docs live
 └── tests/
-    ├── installer.test.js               # the suite: `npm test`, 94 named cases, no framework
+    ├── installer.test.js               # the suite: `npm test`, 95 named cases, no framework
     ├── verify-macos.sh                 # manual macOS release harness, run against a tarball
     └── Test-TaskCompleteRandomness.ps1 # Windows clip distribution, prints a table
 ```
@@ -258,9 +259,9 @@ powershell -File play-category.ps1 error         # StopFailure
 
 One parameterised script rather than one per event: the fixed-category events differ only in which folder they read.
 
-Both drain standard input without parsing it. Claude Code writes JSON to the hook's stdin, and leaving it unread risks blocking the writer once a payload outgrows the pipe buffer — `PreToolUse`, the largest payload wired here, is the one that can. The PowerShell version guards that on `IsInputRedirected`, or running the script by hand would sit waiting for EOF instead of playing a sound.
+Both drain standard input without parsing it. Claude Code writes JSON to the hook's stdin, and leaving it unread risks blocking the writer once a payload outgrows the pipe buffer. The `Notification` and `Stop` payloads wired today are small, but the drain stays because a future event could outgrow the pipe buffer — `PreToolUse`, which carries the full tool input, is the obvious candidate. The PowerShell version guards that on `IsInputRedirected`, or running the script by hand would sit waiting for EOF instead of playing a sound.
 
-All four hook scripts exit quietly — and with status 0 — on every path, including every error path. A non-zero exit surfaces a hook error in the transcript, which a missing sound file does not warrant, and on `PreToolUse` it does considerably worse than that (see below).
+All four hook scripts exit quietly — and with status 0 — on every path, including every error path. A non-zero exit surfaces a hook error in the transcript, which a missing sound file does not warrant, and were `PreToolUse` ever wired again it would do considerably worse than that (see below).
 
 ### Why only Windows waits for the clip duration, and why it pumps a dispatcher to do it
 
@@ -301,21 +302,20 @@ The per-pack `elevenlabs-prompt.md` files hold just the voice description for th
 
 ## Wired Hook Events
 
-Four entries, built by `hookPlan()` in `src/settings.js`.
+Three entries, built by `hookPlan()` in `src/settings.js`.
 
 | Event | Matcher | Category | Script |
 | --- | --- | --- | --- |
 | `Stop` | none | `task-complete` or `decision-needed` | `play-sound` |
 | `Notification` | `permission_prompt\|agent_needs_input\|elicitation_dialog` | `decision-needed` | `play-category` |
-| `PreToolUse` | `AskUserQuestion` | `decision-needed` | `play-category` |
 | `StopFailure` | none | `error` | `play-category` |
 
 Six decisions behind that table, each verified against the hook reference:
 
 - **`Notification` is matched to requests for input only.** Unmatched it fires on all eight notification types, including `auth_success` — a successful login announcing *"Waiting on you."* — and `agent_completed`, which is a subagent announcing itself and is out for the same reason `SubagentStop` is. The lifecycle types `elicitation_complete` and `elicitation_response` report that a request *finished*, so they stay silent; `elicitation_dialog` is a real request and does not. `idle_prompt` is deliberately excluded: it fires on a timer rather than on a question, so it nags rather than signals.
-- **`PreToolUse` on `AskUserQuestion` exists because the multiple-choice picker has no notification type of its own.** Without it, the single most decision-shaped moment in the product would be silent.
+- **`PreToolUse` on `AskUserQuestion` is deliberately not wired**, as of 1.5.1. It was wired on the belief that the multiple-choice picker had no notification type of its own. It does: Claude Code renders the picker as a permission dialog, and every permission dialog left open for six seconds raises a `Notification` of type `permission_prompt` — which the `Notification` entry above already matches. Wired together the two played `decision-needed` twice per question, a few seconds apart. Verified against Claude Code 2.1.260 with a process watcher; the six-second delay is a constant in its permission-dialog code, cancelled if the dialog is answered sooner.
 
-  > **This is the one hook that can break Claude Code.** `PreToolUse` can *block* the tool call: exit code 2 means "do not do this". A hook here that exits non-zero stops the question from being asked at all. Both `play-category` scripts exit 0 unconditionally, on every path including every error path, and **must stay that way**. Each carries an explicit `exit 0` / `process.exit(0)` for exactly this reason — without it the PowerShell process inherits whatever `$LASTEXITCODE` happened to be.
+  > Dropping it also retires the one hook that could break Claude Code: `PreToolUse` can *block* the tool call — exit code 2 means "do not do this". Both `play-category` scripts still exit 0 unconditionally, on every path including every error path, and keep doing so anyway — cheap insurance against it being wired there again.
 
 - **`SessionStart` is deliberately not wired.** It was, matched to `startup` alone so the greeting would not replay on `resume`, `clear`, `compact`, or `fork`. That was not enough. `startup` means every new **session**, not every app launch, and short-lived sessions are common: instrumenting the hook over a six-hour run caught 25 `SessionStart:startup` events — about four an hour, **69% of every sound heard**, with bursts as tight as four in 43 seconds, and 48% of them from a bare `$HOME` cwd rather than any project. Subagents are *not* the cause; none of the 25 carried an `agent_id`. The greeting was also the least useful clip in the set — a session starting is the one moment the terminal already has your attention, which is precisely what `task-complete` and `decision-needed` exist to cover when it does not.
 - **`SubagentStop` is deliberately not wired**, as of 1.3.0, and the `subagent-done` category is retired with it. It was wired, whispering once per subagent, with `play-sound.*` suppressing its own clip when `Stop` followed within five seconds — because a subagent finishing as the turn's last action played two "done" clips for one completion. The suppression worked; the sound was still the wrong idea. A subagent finishing is not a moment that wants the user back, the turn is still running, and a turn that fans out to several of them announced every one. Installing removes the clip as well as the entry, and `src/paths.js` carries the retired paths so an upgrade cleans up after the older version.
@@ -330,7 +330,7 @@ Every hook exits quietly when its category folder is missing or empty. **Deletin
 
 ## Testing
 
-`npm test` runs `tests/installer.test.js`: 94 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
+`npm test` runs `tests/installer.test.js`: 95 named cases, `node:assert` only, no framework — the package has zero runtime dependencies and there is no reason for the tests to add any. Every filesystem test runs against an `fs.mkdtempSync` sandbox, and the settings-merge tests use a fixed set of Unix `hookFacts` so the merge is testable on any host platform.
 
 It covers the plan table (including `uninstallGate`/`readConsent`), the settings rewrite (including BOM round-tripping, third-party hook survival, and upgrading from a `.sh` install), install and uninstall effects, and the player probe order. `Stop` classification parity with `play-sound.ps1` is checked rather than assumed: the classifier pattern is extracted from both `play-sound.js` and `play-sound.ps1` and asserted identical on every platform, and on Windows the shared fixture table is additionally run through the real .NET regex engine via `powershell.exe`. One test reads the **real** `~/.claude/settings.json` on the machine running it, if there is one, and asserts it survives a merge semantically intact.
 

@@ -188,7 +188,7 @@ test('an absent settings.json is created with only our hooks', () => {
   mergeSettings(p, path.join(root, 'hooks'), UNIX_FACTS);
   const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
   assert.deepEqual(Object.keys(cfg), ['hooks']);
-  assert.equal(Object.keys(cfg.hooks).length, 4);
+  assert.equal(Object.keys(cfg.hooks).length, 3);
 });
 
 test('unrelated user config survives the merge untouched', () => {
@@ -229,7 +229,7 @@ test('merging twice does not duplicate our entries', () => {
   mergeSettings(p, hooksDir, UNIX_FACTS);
   const once = fs.readFileSync(p, 'utf8');
   const second = mergeSettings(p, hooksDir, UNIX_FACTS);
-  assert.equal(second.removed, 4, 'the second run strips the four it finds');
+  assert.equal(second.removed, 3, 'the second run strips the three it finds');
   assert.equal(fs.readFileSync(p, 'utf8'), once, 'output must be byte-identical on re-run');
 });
 
@@ -266,6 +266,22 @@ test('SubagentStop is never wired, and a 1.2.0 entry is unwired', () => {
   assert.ok(!all.some((c) => c.includes('subagent-done')), 'no subagent-done clip may be wired');
 });
 
+test('PreToolUse is never wired, and a pre-1.5.1 AskUserQuestion entry is unwired', () => {
+  const root = sandbox();
+  const p = path.join(root, 'settings.json');
+  fs.writeFileSync(p, JSON.stringify({
+    hooks: {
+      PreToolUse: [{ matcher: 'AskUserQuestion', hooks: [{ type: 'command', command: 'node "/home/j/.claude/hooks/play-category.js" decision-needed', timeout: 10 }] }],
+    },
+  }, null, 2));
+  const { removed } = mergeSettings(p, path.join(root, 'hooks'), UNIX_FACTS);
+  assert.equal(removed, 1, 'the old entry must be stripped on upgrade');
+  const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+  assert.equal(cfg.hooks.PreToolUse, undefined, 'and not written back');
+  const plan = hookPlan(path.join(root, 'hooks'), UNIX_FACTS);
+  assert.ok(!plan.some((entry) => entry.event === 'PreToolUse'), 'PreToolUse must not be in the plan');
+});
+
 test('SessionStart is never wired', () => {
   const root = sandbox();
   const p = path.join(root, 'settings.json');
@@ -280,7 +296,7 @@ test('every entry carries the 10s timeout', () => {
   mergeSettings(p, path.join(root, 'hooks'), UNIX_FACTS);
   const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
   const all = Object.values(cfg.hooks).flatMap((g) => g.flatMap((x) => x.hooks));
-  assert.ok(all.length === 4 && all.every((h) => h.timeout === 10));
+  assert.ok(all.length === 3 && all.every((h) => h.timeout === 10));
 });
 
 test('emptied events are dropped, not left as []', () => {
@@ -309,7 +325,7 @@ test('a UTF-8 BOM is tolerated and preserved', () => {
   assert.equal(written.charCodeAt(0), 0xfeff, 'the BOM must be preserved, not silently dropped');
   const cfg = JSON.parse(written.slice(1));
   assert.equal(cfg.model, 'claude-opus-5');
-  assert.equal(Object.keys(cfg.hooks).length, 4);
+  assert.equal(Object.keys(cfg.hooks).length, 3);
 });
 
 test('a file without a BOM does not gain one', () => {

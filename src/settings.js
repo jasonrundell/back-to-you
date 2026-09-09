@@ -25,7 +25,7 @@ const path = require('node:path');
  */
 const CATEGORIES = [
   { name: 'task-complete', required: true },   // Stop
-  { name: 'decision-needed', required: true }, // Stop, Notification, PreToolUse
+  { name: 'decision-needed', required: true }, // Stop, Notification
   // StopFailure. Optional: a pack without it installs, but stays quiet on
   // failures - checkPack warns rather than failing, so user-made packs
   // that never shipped error clips keep working.
@@ -33,7 +33,7 @@ const CATEGORIES = [
 ];
 
 /**
- * The four wired events.
+ * The three wired events.
  *
  * SessionStart is deliberately NOT wired. Matched even to `startup` alone it
  * fired ~4x an hour in real use and accounted for 69% of all sounds heard
@@ -50,13 +50,18 @@ const CATEGORIES = [
  * input; unmatched it also fires on auth_success, and on agent_completed -
  * the same subagent announcement by another route, out for the same reason.
  *
- * PreToolUse/AskUserQuestion covers the multiple-choice picker, which has no
- * notification type of its own and would otherwise be the one decision-shaped
- * moment in the product that stays silent.
+ * PreToolUse/AskUserQuestion is NOT wired, as of 1.5.1. It was, on the
+ * belief that the multiple-choice picker had no notification type of its
+ * own. It does: Claude Code renders the picker as a permission dialog, and
+ * every permission dialog left open for six seconds raises a Notification
+ * of type permission_prompt - which the entry above already matches. Wired
+ * together they played decision-needed twice per question, a few seconds
+ * apart. Verified against 2.1.260 with a process watcher; the six-second
+ * delay is a constant in Claude Code's permission-dialog code.
  *
- * IMPORTANT: PreToolUse can BLOCK the tool call - exit code 2 means "do not
- * do this". The category hook exits 0 unconditionally, including on every
- * error path, and it must stay that way.
+ * Dropping it also retires the one hook that could break Claude Code:
+ * PreToolUse can BLOCK the tool call (exit code 2). The category hook still
+ * exits 0 unconditionally, and should keep doing so - cheap insurance.
  */
 function hookPlan(hooksDir, facts) {
   const sound = facts.invoke(path.join(hooksDir, facts.soundHook));
@@ -69,7 +74,6 @@ function hookPlan(hooksDir, facts) {
       matcher: 'permission_prompt|agent_needs_input|elicitation_dialog',
       command: category('decision-needed'),
     },
-    { event: 'PreToolUse', matcher: 'AskUserQuestion', command: category('decision-needed') },
     { event: 'StopFailure', matcher: null, command: category('error') },
   ];
 }
