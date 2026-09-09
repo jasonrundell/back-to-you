@@ -20,8 +20,10 @@ $script:ErrorFile = "$env:USERPROFILE\.claude\.backtoyou-playback-error"
 
 # Drain the hook payload even though the category is often already known from
 # an argument. Claude Code writes JSON to this process's stdin; leaving it
-# unread risks blocking the writer once a payload outgrows the pipe buffer,
-# and PreToolUse - the largest payload wired here - is the one that can.
+# unread risks blocking the writer once a payload outgrows the pipe buffer.
+# The Notification and Stop payloads wired today are small, but the drain
+# stays because a future event could outgrow the pipe buffer - PreToolUse,
+# which carries the full tool input, is the obvious candidate.
 #
 # Guarded on IsInputRedirected, or running a hook by hand would sit there
 # waiting for EOF instead of playing a sound.
